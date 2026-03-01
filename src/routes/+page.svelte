@@ -1,0 +1,71 @@
+<script lang="ts">
+	import { goto } from '$app/navigation';
+	import { useAuth } from '$lib/auth.svelte';
+	import { apiFetch } from '$lib/api';
+
+	const auth = useAuth();
+
+	let email = $state('');
+	let sending = $state(false);
+	let sent = $state(false);
+	let error = $state('');
+
+	// If already authenticated, redirect to orders
+	$effect(() => {
+		if (auth.isAuthenticated) {
+			goto('/orders');
+		}
+	});
+
+	async function handleSubmit(e: Event) {
+		e.preventDefault();
+		sending = true;
+		error = '';
+
+		try {
+			await apiFetch('/auth/magic-link', {
+				method: 'POST',
+				body: JSON.stringify({ email })
+			});
+			sent = true;
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to send magic link';
+		} finally {
+			sending = false;
+		}
+	}
+</script>
+
+<svelte:head>
+	<title>Sign In — Bulk Order Co-op</title>
+</svelte:head>
+
+<hgroup>
+	<h1>Bulk Order Co-op</h1>
+	<p>Coordinate bulk food orders with your community</p>
+</hgroup>
+
+{#if sent}
+	<section>
+		<h2>Check your email</h2>
+		<p>We've sent a sign-in link to <strong>{email}</strong>.</p>
+		<p>Click the link in the email to sign in. It expires in 15 minutes.</p>
+		<button onclick={() => { sent = false; email = ''; }}>Send another link</button>
+	</section>
+{:else}
+	<section>
+		<h2>Sign in</h2>
+		{#if error}
+			<p><mark>{error}</mark></p>
+		{/if}
+		<form onsubmit={handleSubmit}>
+			<label>
+				Email address
+				<input type="email" bind:value={email} placeholder="you@example.com" required />
+			</label>
+			<button type="submit" aria-busy={sending} disabled={sending}>
+				{sending ? 'Sending...' : 'Send magic link'}
+			</button>
+		</form>
+	</section>
+{/if}

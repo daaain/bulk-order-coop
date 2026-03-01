@@ -1,0 +1,51 @@
+{
+	"name": "bulk-order-coop",
+	"private": true,
+	"version": "0.0.1",
+	"type": "module",
+	"scripts": {
+		"dev": "concurrently --names svelte,worker \"vite dev\" \"wrangler pages dev build --d1 DB=local --port 8787 --compatibility-date 2025-02-28\"",
+		"dev:svelte": "vite dev",
+		"dev:worker": "wrangler pages dev build --d1 DB=local --port 8787 --compatibility-date 2025-02-28",
+		"build": "vite build",
+		"preview": "vite preview",
+		"prepare": "svelte-kit sync || echo ''",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:integration": "vitest run --config vitest.config.integration.ts",
+		"test:integration:watch": "vitest --config vitest.config.integration.ts",
+		"test:e2e": "npx playwright test",
+		"test:e2e:ui": "npx playwright test --ui",
+		"e2e:serve": "wrangler pages dev build/ --d1 DB=local --port 4173 --compatibility-date 2025-02-28 --binding JWT_SECRET=test-e2e-secret --binding RESEND_API_KEY=re_xxx",
+		"test:all": "bun run test && bun run test:integration && bun run test:e2e",
+		"lint": "oxlint .",
+		"db:generate": "drizzle-kit generate",
+		"db:migrate": "wrangler d1 migrations apply DB --local"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20260228.1",
+		"@hono/node-server": "^1.19.9",
+		"@playwright/test": "^1.58.2",
+		"@sveltejs/adapter-static": "^3.0.10",
+		"@sveltejs/kit": "^2.50.2",
+		"@sveltejs/vite-plugin-svelte": "^6.2.4",
+		"concurrently": "^9.2.1",
+		"drizzle-kit": "^0.31.9",
+		"oxlint": "^1.50.0",
+		"svelte": "^5.51.0",
+		"svelte-check": "^4.4.2",
+		"typescript": "^5.9.3",
+		"vite": "^7.3.1",
+		"vitest": "^4.0.18",
+		"wrangler": "^4.69.0"
+	},
+	"dependencies": {
+		"@picocss/pico": "^2.1.1",
+		"bits-ui": "^2.16.2",
+		"drizzle-orm": "^0.45.1",
+		"hono": "^4.12.3",
+		"nanoid": "^5.1.6"
+	}
+}
