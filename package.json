@@ -20,7 +20,7 @@
 		"test:e2e:ui": "npx playwright test --ui",
 		"e2e:serve": "wrangler pages dev build/ --d1 DB=local --port 4173 --compatibility-date 2025-02-28 --binding JWT_SECRET=test-e2e-secret --binding RESEND_API_KEY=re_xxx",
 		"test:all": "bun run test && bun run test:integration && bun run test:e2e",
-		"lint": "oxlint .",
+		"lint": "oxlint . --ignore-path .gitignore && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "wrangler d1 migrations apply DB --local"
 	},
@@ -31,6 +31,7 @@
 		"@sveltejs/adapter-static": "^3.0.10",
 		"@sveltejs/kit": "^2.50.2",
 		"@sveltejs/vite-plugin-svelte": "^6.2.4",
+		"@types/node": "^25.3.3",
 		"concurrently": "^9.2.1",
 		"drizzle-kit": "^0.31.9",
 		"oxlint": "^1.50.0",

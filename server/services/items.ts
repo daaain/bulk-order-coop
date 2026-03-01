@@ -1,7 +1,8 @@
 const VALID_FLEXIBILITY = ['+', '-', '+-', '*'] as const;
 
 type AddItemResult = { productCode: string; notes?: string } | { error: string };
-type ClaimResult = { amount: number; flexibility?: string } | { error: string };
+type Flexibility = '+' | '-' | '+-' | '*';
+type ClaimResult = { amount: number; flexibility?: Flexibility } | { error: string };
 
 export function validateAddItem(body: Record<string, unknown>): AddItemResult {
 	const productCode = typeof body.productCode === 'string' ? body.productCode.trim() : '';
@@ -26,7 +27,7 @@ export function validateClaim(body: Record<string, unknown>): ClaimResult {
 		if (!VALID_FLEXIBILITY.includes(body.flexibility as typeof VALID_FLEXIBILITY[number])) {
 			return { error: 'flexibility must be one of: +, -, +-, *' };
 		}
-		return { amount, flexibility: body.flexibility as string };
+		return { amount, flexibility: body.flexibility as Flexibility };
 	}
 
 	return { amount };

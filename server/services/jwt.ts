@@ -13,7 +13,7 @@ function base64UrlEncode(data: Uint8Array): string {
 	return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function base64UrlDecode(str: string): Uint8Array {
+function base64UrlDecode(str: string) {
 	const padded = str.replace(/-/g, '+').replace(/_/g, '/');
 	const binary = atob(padded);
 	const bytes = new Uint8Array(binary.length);
@@ -23,7 +23,7 @@ function base64UrlDecode(str: string): Uint8Array {
 	return bytes;
 }
 
-function textEncode(str: string): Uint8Array {
+function textEncode(str: string) {
 	return new TextEncoder().encode(str);
 }
 

@@ -7,7 +7,8 @@ const config = {
 			fallback: 'index.html'
 		}),
 		alias: {
-			$shared: './shared'
+			$shared: './shared',
+			$server: './server'
 		}
 	}
 };

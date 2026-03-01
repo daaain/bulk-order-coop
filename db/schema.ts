@@ -126,7 +126,7 @@ export const claims = sqliteTable(
 			.references(() => members.id)
 			.notNull(),
 		amount: real('amount').notNull(),
-		flexibility: text('flexibility'),
+		flexibility: text('flexibility').$type<'+' | '-' | '+-' | '*'>(),
 		createdAt: integer('created_at').notNull(),
 		updatedAt: integer('updated_at').notNull()
 	},

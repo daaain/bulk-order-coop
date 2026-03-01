@@ -15,7 +15,9 @@
 		oncancel?: () => void;
 	} = $props();
 
+	// svelte-ignore state_referenced_locally
 	let amount = $state(initialAmount);
+	// svelte-ignore state_referenced_locally
 	let flexibility = $state(initialFlexibility);
 
 	let step = $derived(

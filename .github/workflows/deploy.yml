@@ -23,7 +23,7 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Lint
-        run: bunx oxlint . --ignore-path .gitignore
+        run: bun run lint
 
       - name: Unit tests
         run: bun run test
