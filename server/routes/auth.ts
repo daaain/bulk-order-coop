@@ -30,14 +30,7 @@ app.post('/magic-link', async (c) => {
 	});
 
 	const baseUrl = new URL(c.req.url).origin;
-	console.log(`[auth] Sending magic link to ${email}, baseUrl=${baseUrl}`);
-	try {
-		await sendMagicLink(c.env.RESEND_API_KEY, email, token, baseUrl);
-		console.log(`[auth] sendMagicLink completed successfully`);
-	} catch (err) {
-		console.error(`[auth] sendMagicLink failed:`, err);
-		return c.json({ error: 'Failed to send magic link' }, 500);
-	}
+	await sendMagicLink(c.env.RESEND_API_KEY, email, token, baseUrl);
 
 	return c.json({ message: 'Magic link sent' });
 });
