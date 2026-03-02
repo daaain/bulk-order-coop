@@ -20,52 +20,12 @@ export const authTokens = sqliteTable('auth_tokens', {
 	usedAt: integer('used_at')
 });
 
-// ── catalogues ── uploaded catalogue versions ────────────────────────────────
-
-export const catalogues = sqliteTable('catalogues', {
-	id: text('id').primaryKey(),
-	name: text('name').notNull(),
-	uploadedBy: text('uploaded_by')
-		.references(() => members.id)
-		.notNull(),
-	uploadedAt: integer('uploaded_at').notNull(),
-	itemCount: integer('item_count').notNull()
-});
-
-// ── catalogue_items ── individual products in a catalogue ────────────────────
-
-export const catalogueItems = sqliteTable(
-	'catalogue_items',
-	{
-		id: text('id').primaryKey(),
-		catalogueId: text('catalogue_id')
-			.references(() => catalogues.id)
-			.notNull(),
-		productCode: text('product_code').notNull(),
-		description: text('description').notNull(),
-		brand: text('brand'),
-		organic: integer('organic'),
-		casePrice: real('case_price').notNull(),
-		vatRate: integer('vat_rate').notNull(),
-		vatPerCase: real('vat_per_case').notNull(),
-		unitsPerCase: integer('units_per_case'),
-		packSize: real('pack_size').notNull(),
-		unit: text('unit').notNull(),
-		rrp: real('rrp'),
-		barcode: text('barcode'),
-		active: integer('active').notNull()
-	},
-	(table) => [unique().on(table.catalogueId, table.productCode)]
-);
-
 // ── orders ── a bulk order event ─────────────────────────────────────────────
 
 export const orders = sqliteTable('orders', {
 	id: text('id').primaryKey(),
 	name: text('name').notNull(),
-	catalogueId: text('catalogue_id')
-		.references(() => catalogues.id)
-		.notNull(),
+	catalogueKey: text('catalogue_key').notNull(),
 	status: text('status').notNull(),
 	deadline: integer('deadline'),
 	inviteCode: text('invite_code').unique().notNull(),
@@ -94,7 +54,7 @@ export const orderMembers = sqliteTable(
 	]
 );
 
-// ── order_items ── catalogue items added to an order ─────────────────────────
+// ── order_items ── products added to an order (with point-in-time snapshot) ──
 
 export const orderItems = sqliteTable(
 	'order_items',
@@ -104,6 +64,17 @@ export const orderItems = sqliteTable(
 			.references(() => orders.id)
 			.notNull(),
 		productCode: text('product_code').notNull(),
+		description: text('description').notNull(),
+		brand: text('brand'),
+		organic: integer('organic'),
+		casePrice: real('case_price').notNull(),
+		vatRate: integer('vat_rate').notNull(),
+		vatPerCase: real('vat_per_case').notNull(),
+		unitsPerCase: integer('units_per_case'),
+		packSize: real('pack_size').notNull(),
+		unit: text('unit').notNull(),
+		rrp: real('rrp'),
+		barcode: text('barcode'),
 		addedBy: text('added_by')
 			.references(() => members.id)
 			.notNull(),

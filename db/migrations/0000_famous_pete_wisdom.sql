@@ -19,35 +19,6 @@ CREATE TABLE `auth_tokens` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `auth_tokens_token_unique` ON `auth_tokens` (`token`);--> statement-breakpoint
-CREATE TABLE `catalogue_items` (
-	`id` text PRIMARY KEY NOT NULL,
-	`catalogue_id` text NOT NULL,
-	`product_code` text NOT NULL,
-	`description` text NOT NULL,
-	`brand` text,
-	`organic` integer,
-	`case_price` real NOT NULL,
-	`vat_rate` integer NOT NULL,
-	`vat_per_case` real NOT NULL,
-	`units_per_case` integer,
-	`pack_size` real NOT NULL,
-	`unit` text NOT NULL,
-	`rrp` real,
-	`barcode` text,
-	`active` integer NOT NULL,
-	FOREIGN KEY (`catalogue_id`) REFERENCES `catalogues`(`id`) ON UPDATE no action ON DELETE no action
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `catalogue_items_catalogue_id_product_code_unique` ON `catalogue_items` (`catalogue_id`,`product_code`);--> statement-breakpoint
-CREATE TABLE `catalogues` (
-	`id` text PRIMARY KEY NOT NULL,
-	`name` text NOT NULL,
-	`uploaded_by` text NOT NULL,
-	`uploaded_at` integer NOT NULL,
-	`item_count` integer NOT NULL,
-	FOREIGN KEY (`uploaded_by`) REFERENCES `members`(`id`) ON UPDATE no action ON DELETE no action
-);
---> statement-breakpoint
 CREATE TABLE `claims` (
 	`id` text PRIMARY KEY NOT NULL,
 	`order_item_id` text NOT NULL,
@@ -86,6 +57,17 @@ CREATE TABLE `order_items` (
 	`id` text PRIMARY KEY NOT NULL,
 	`order_id` text NOT NULL,
 	`product_code` text NOT NULL,
+	`description` text NOT NULL,
+	`brand` text,
+	`organic` integer,
+	`case_price` real NOT NULL,
+	`vat_rate` integer NOT NULL,
+	`vat_per_case` real NOT NULL,
+	`units_per_case` integer,
+	`pack_size` real NOT NULL,
+	`unit` text NOT NULL,
+	`rrp` real,
+	`barcode` text,
 	`added_by` text NOT NULL,
 	`added_at` integer NOT NULL,
 	`notes` text,
@@ -107,13 +89,12 @@ CREATE TABLE `order_members` (
 CREATE TABLE `orders` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
-	`catalogue_id` text NOT NULL,
+	`catalogue_key` text NOT NULL,
 	`status` text NOT NULL,
 	`deadline` integer,
 	`invite_code` text NOT NULL,
 	`created_by` text NOT NULL,
 	`created_at` integer NOT NULL,
-	FOREIGN KEY (`catalogue_id`) REFERENCES `catalogues`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`created_by`) REFERENCES `members`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint

@@ -1,30 +1,105 @@
 import { describe, it, expect } from 'vitest';
 import { validateAddItem, validateClaim } from '$server/services/items';
 
+const VALID_SNAPSHOT = {
+	productCode: '1001',
+	description: 'Arborio Rice',
+	brand: 'Infinity Foods',
+	organic: true,
+	casePrice: 15.55,
+	vatRate: 0,
+	vatPerCase: 0,
+	unitsPerCase: 6,
+	packSize: 500,
+	unit: 'g',
+	rrp: 3.46,
+	barcode: '5028869010010'
+};
+
 describe('validateAddItem', () => {
-	it('accepts a valid productCode', () => {
-		const result = validateAddItem({ productCode: '12345' });
-		expect(result).toEqual({ productCode: '12345' });
+	it('accepts a valid full snapshot', () => {
+		const result = validateAddItem(VALID_SNAPSHOT);
+		expect(result).toEqual({
+			productCode: '1001',
+			description: 'Arborio Rice',
+			brand: 'Infinity Foods',
+			organic: true,
+			casePrice: 15.55,
+			vatRate: 0,
+			vatPerCase: 0,
+			unitsPerCase: 6,
+			packSize: 500,
+			unit: 'g',
+			rrp: 3.46,
+			barcode: '5028869010010'
+		});
 	});
 
 	it('rejects missing productCode', () => {
-		const result = validateAddItem({});
+		const result = validateAddItem({ ...VALID_SNAPSHOT, productCode: '' });
 		expect(result).toEqual({ error: 'productCode is required' });
 	});
 
-	it('rejects empty productCode', () => {
-		const result = validateAddItem({ productCode: '  ' });
-		expect(result).toEqual({ error: 'productCode is required' });
+	it('rejects missing description', () => {
+		const result = validateAddItem({ ...VALID_SNAPSHOT, description: '' });
+		expect(result).toEqual({ error: 'description is required' });
 	});
 
-	it('accepts productCode with optional notes', () => {
-		const result = validateAddItem({ productCode: '12345', notes: 'Get the green one' });
-		expect(result).toEqual({ productCode: '12345', notes: 'Get the green one' });
+	it('rejects zero casePrice', () => {
+		const result = validateAddItem({ ...VALID_SNAPSHOT, casePrice: 0 });
+		expect(result).toEqual({ error: 'casePrice must be a positive number' });
 	});
 
-	it('strips notes if empty/whitespace', () => {
-		const result = validateAddItem({ productCode: '12345', notes: '   ' });
-		expect(result).toEqual({ productCode: '12345' });
+	it('rejects negative casePrice', () => {
+		const result = validateAddItem({ ...VALID_SNAPSHOT, casePrice: -5 });
+		expect(result).toEqual({ error: 'casePrice must be a positive number' });
+	});
+
+	it('rejects invalid vatRate', () => {
+		const result = validateAddItem({ ...VALID_SNAPSHOT, vatRate: 5 });
+		expect(result).toEqual({ error: 'vatRate must be 0 or 2' });
+	});
+
+	it('accepts vatRate 2', () => {
+		const result = validateAddItem({ ...VALID_SNAPSHOT, vatRate: 2, vatPerCase: 2.33 });
+		expect('error' in result).toBe(false);
+		expect((result as Record<string, unknown>).vatRate).toBe(2);
+	});
+
+	it('rejects zero packSize', () => {
+		const result = validateAddItem({ ...VALID_SNAPSHOT, packSize: 0 });
+		expect(result).toEqual({ error: 'packSize must be a positive number' });
+	});
+
+	it('rejects missing unit', () => {
+		const result = validateAddItem({ ...VALID_SNAPSHOT, unit: '' });
+		expect(result).toEqual({ error: 'unit is required' });
+	});
+
+	it('accepts optional notes', () => {
+		const result = validateAddItem({ ...VALID_SNAPSHOT, notes: 'Get the green one' });
+		expect((result as Record<string, unknown>).notes).toBe('Get the green one');
+	});
+
+	it('strips empty notes', () => {
+		const result = validateAddItem({ ...VALID_SNAPSHOT, notes: '   ' });
+		expect((result as Record<string, unknown>).notes).toBeUndefined();
+	});
+
+	it('handles null optional fields', () => {
+		const result = validateAddItem({
+			...VALID_SNAPSHOT,
+			brand: null,
+			unitsPerCase: null,
+			rrp: null,
+			barcode: null
+		});
+		expect('error' in result).toBe(false);
+		const r = result as Record<string, unknown>;
+		expect(r.brand).toBeNull();
+		expect(r.unitsPerCase).toBeNull();
+		expect(r.rrp).toBeNull();
+		expect(r.barcode).toBeNull();
 	});
 });
 

@@ -10,24 +10,24 @@ const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
 
 export function validateCreateOrder(
 	body: unknown
-): { name: string; catalogueId: string; deadline?: number } | { error: string } {
+): { name: string; catalogueKey: string; deadline?: number } | { error: string } {
 	if (!body || typeof body !== 'object') {
 		return { error: 'Request body must be an object' };
 	}
 
-	const { name, catalogueId, deadline } = body as Record<string, unknown>;
+	const { name, catalogueKey, deadline } = body as Record<string, unknown>;
 
 	if (typeof name !== 'string' || name.trim() === '') {
 		return { error: 'name is required and must be a non-empty string' };
 	}
 
-	if (typeof catalogueId !== 'string' || catalogueId.trim() === '') {
-		return { error: 'catalogueId is required and must be a non-empty string' };
+	if (typeof catalogueKey !== 'string' || catalogueKey.trim() === '') {
+		return { error: 'catalogueKey is required and must be a non-empty string' };
 	}
 
-	const result: { name: string; catalogueId: string; deadline?: number } = {
+	const result: { name: string; catalogueKey: string; deadline?: number } = {
 		name: name.trim(),
-		catalogueId: catalogueId.trim()
+		catalogueKey: catalogueKey.trim()
 	};
 
 	if (deadline !== undefined) {

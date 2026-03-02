@@ -11,7 +11,7 @@ export async function fetchOrder(id: string): Promise<OrderDetail> {
 
 export async function createOrder(data: {
 	name: string;
-	catalogueId: string;
+	catalogueKey: string;
 	deadline?: number;
 }): Promise<Order> {
 	return apiFetch<Order>('/orders', {

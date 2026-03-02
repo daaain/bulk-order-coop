@@ -4,8 +4,7 @@ import {
 	teardownMiniflare,
 	resetDatabase,
 	appFetch,
-	seedCatalogue,
-	getDb
+	seedCatalogueInR2
 } from './helpers';
 
 const CSV_CONTENT = `Product code,order column 1,concatprodsize as text,organic,product description,RRP rounded to 2,brand,Change Marker,Case price,Vat Marker,Vat per case,Barcode inner,units case,pk size,unit,Vat rating,Active as a number
@@ -16,38 +15,22 @@ describe('Catalogue routes', () => {
 	afterAll(teardownMiniflare);
 	beforeEach(resetDatabase);
 
-	function insertSystemMember() {
-		const now = Math.floor(Date.now() / 1000);
-		return getDb()
-			.prepare(
-				'INSERT OR IGNORE INTO members (id, email, name, initials, created_at) VALUES (?, ?, ?, ?, ?)'
-			)
-			.bind('system', 'system@test.local', 'System', 'SYS', now)
-			.run();
-	}
-
 	describe('POST /catalogues', () => {
-		it('creates a catalogue from valid CSV form data', async () => {
-			await insertSystemMember();
-
+		it('uploads CSV to R2 and returns key + itemCount', async () => {
 			const form = new FormData();
-			form.append('name', 'Test Cat');
 			form.append('file', new File([CSV_CONTENT], 'test.csv', { type: 'text/csv' }));
 
 			const res = await appFetch('/catalogues', { method: 'POST', body: form });
 			expect(res.status).toBe(201);
 
-			const body = (await res.json()) as { id: string; name: string; itemCount: number };
-			expect(body.id).toBeDefined();
-			expect(body.name).toBe('Test Cat');
+			const body = (await res.json()) as { key: string; itemCount: number };
+			expect(body.key).toBeDefined();
+			expect(body.key).toContain('test.csv');
 			expect(body.itemCount).toBe(1);
 		});
 
 		it('rejects request with missing file', async () => {
-			await insertSystemMember();
-
 			const form = new FormData();
-			form.append('name', 'No File Catalogue');
 
 			const res = await appFetch('/catalogues', { method: 'POST', body: form });
 			expect(res.status).toBe(400);
@@ -55,41 +38,34 @@ describe('Catalogue routes', () => {
 			const body = (await res.json()) as { error: string };
 			expect(body.error).toMatch(/file/i);
 		});
-	});
 
-	describe('GET /catalogues', () => {
-		it('returns an array of catalogues', async () => {
-			await seedCatalogue();
+		it('rejects CSV with no valid items', async () => {
+			const form = new FormData();
+			form.append('file', new File(['just,a,header\n'], 'empty.csv', { type: 'text/csv' }));
 
-			const res = await appFetch('/catalogues');
-			expect(res.status).toBe(200);
+			const res = await appFetch('/catalogues', { method: 'POST', body: form });
+			expect(res.status).toBe(400);
 
-			const body = (await res.json()) as Array<{ id: string; name: string; itemCount: number }>;
-			expect(Array.isArray(body)).toBe(true);
-			expect(body.length).toBe(1);
-			expect(body[0].name).toBe('Test Catalogue');
-			expect(body[0].itemCount).toBeGreaterThan(0);
+			const body = (await res.json()) as { error: string };
+			expect(body.error).toMatch(/no valid items/i);
 		});
 	});
 
-	describe('GET /catalogues/:id', () => {
-		it('returns a catalogue with its items', async () => {
-			const { catalogueId, itemCount } = await seedCatalogue();
+	describe('GET /catalogues/:key', () => {
+		it('serves CSV from R2 with correct content type', async () => {
+			const { catalogueKey } = await seedCatalogueInR2();
 
-			const res = await appFetch(`/catalogues/${catalogueId}`);
+			const res = await appFetch(`/catalogues/${catalogueKey}`);
 			expect(res.status).toBe(200);
+			expect(res.headers.get('Content-Type')).toContain('text/csv');
 
-			const body = (await res.json()) as {
-				id: string;
-				name: string;
-				items: Array<{ id: string; productCode: string }>;
-			};
-			expect(body.id).toBe(catalogueId);
-			expect(body.items).toHaveLength(itemCount);
+			const text = await res.text();
+			expect(text).toContain('Product code');
+			expect(text).toContain('1001');
 		});
 
-		it('returns 404 for a non-existent catalogue', async () => {
-			const res = await appFetch('/catalogues/nonexistent-id');
+		it('returns 404 for non-existent key', async () => {
+			const res = await appFetch('/catalogues/nonexistent-key.csv');
 			expect(res.status).toBe(404);
 
 			const body = (await res.json()) as { error: string };

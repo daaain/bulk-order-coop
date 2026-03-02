@@ -7,15 +7,16 @@ import type { JwtPayload } from '../services/jwt';
 import { requireAuth } from '../middleware/auth';
 import {
 	orders, orderMembers, orderItems, claims,
-	catalogueItems, members, deliveryItems, allocations
+	members, deliveryItems, allocations
 } from '../../db/schema';
 import { validateDeliveryUpdate, computeAllocations } from '../services/reconciliation';
 import { calculateRounding } from '../../shared/rounding';
 import { calculateCaseSize, estimateCost } from '../../shared/costs';
 import type {
 	ClaimWithMember, AllocationWithMember, ReconciliationItem,
-	MemberCostSummary, ReconciliationSummary, CatalogueItem
+	MemberCostSummary, ReconciliationSummary
 } from '../../shared/types';
+import { catalogueItemFromOrderItem } from './items';
 
 const app = new Hono<{ Bindings: Bindings; Variables: { jwtPayload: JwtPayload; memberId: string } }>();
 
@@ -122,7 +123,7 @@ app.get('/:id/reconciliation', async (c) => {
 	}
 
 	const [order] = await db
-		.select({ status: orders.status, catalogueId: orders.catalogueId })
+		.select({ status: orders.status })
 		.from(orders)
 		.where(eq(orders.id, orderId));
 
@@ -134,7 +135,7 @@ app.get('/:id/reconciliation', async (c) => {
 		return c.json({ error: 'Order must be reconciling or complete' }, 400);
 	}
 
-	// 1. Get all order items
+	// 1. Get all order items (with product snapshots)
 	const items = await db
 		.select()
 		.from(orderItems)
@@ -150,21 +151,8 @@ app.get('/:id/reconciliation', async (c) => {
 	}
 
 	const itemIds = items.map((i) => i.id);
-	const productCodes = items.map((i) => i.productCode);
 
-	// 2. Get catalogue items
-	const catItems = await db
-		.select()
-		.from(catalogueItems)
-		.where(
-			and(
-				eq(catalogueItems.catalogueId, order.catalogueId),
-				inArray(catalogueItems.productCode, productCodes)
-			)
-		);
-	const catMap = new Map(catItems.map((ci) => [ci.productCode, ci]));
-
-	// 3. Get claims with member info
+	// 2. Get claims with member info
 	const claimRows = await db
 		.select({
 			id: claims.id,
@@ -188,14 +176,14 @@ app.get('/:id/reconciliation', async (c) => {
 		claimsByItem.set(row.orderItemId, list);
 	}
 
-	// 4. Get delivery items
+	// 3. Get delivery items
 	const deliveries = await db
 		.select()
 		.from(deliveryItems)
 		.where(inArray(deliveryItems.orderItemId, itemIds));
 	const deliveryMap = new Map(deliveries.map((d) => [d.orderItemId, d]));
 
-	// 5. Get allocations with member info
+	// 4. Get allocations with member info
 	const allocationRows = await db
 		.select({
 			id: allocations.id,
@@ -221,25 +209,39 @@ app.get('/:id/reconciliation', async (c) => {
 		allocationsByItem.set(row.orderItemId, list);
 	}
 
-	// 6. Assemble ReconciliationItems
+	// 5. Assemble ReconciliationItems
 	const reconItems: ReconciliationItem[] = items.map((item) => {
-		const ci = catMap.get(item.productCode);
+		const ci = catalogueItemFromOrderItem(item);
 		const itemClaims = claimsByItem.get(item.id) ?? [];
 		const rounding = calculateRounding(
 			itemClaims,
-			ci?.unitsPerCase ?? null,
-			ci?.packSize ?? 1
+			item.unitsPerCase,
+			item.packSize
 		);
 		const delivery = deliveryMap.get(item.id) ?? null;
 		const itemAllocations = allocationsByItem.get(item.id) ?? [];
 
 		return {
-			orderItem: item,
-			catalogueItem: {
-				...ci!,
-				organic: Boolean(ci?.organic),
-				active: Boolean(ci?.active)
-			} as CatalogueItem,
+			orderItem: {
+				id: item.id,
+				orderId: item.orderId,
+				productCode: item.productCode,
+				description: item.description,
+				brand: item.brand,
+				organic: Boolean(item.organic),
+				casePrice: item.casePrice,
+				vatRate: item.vatRate,
+				vatPerCase: item.vatPerCase,
+				unitsPerCase: item.unitsPerCase,
+				packSize: item.packSize,
+				unit: item.unit,
+				rrp: item.rrp,
+				barcode: item.barcode,
+				addedBy: item.addedBy,
+				addedAt: item.addedAt,
+				notes: item.notes
+			},
+			catalogueItem: ci,
 			claims: itemClaims,
 			rounding,
 			delivery: delivery ? {
@@ -253,7 +255,7 @@ app.get('/:id/reconciliation', async (c) => {
 		};
 	});
 
-	// 7. Compute member summaries
+	// 6. Compute member summaries
 	const memberTotals = new Map<string, MemberCostSummary>();
 
 	for (const reconItem of reconItems) {
@@ -351,7 +353,7 @@ app.post('/:id/allocate', async (c) => {
 	}
 
 	const [order] = await db
-		.select({ status: orders.status, catalogueId: orders.catalogueId })
+		.select({ status: orders.status })
 		.from(orders)
 		.where(eq(orders.id, orderId));
 
@@ -363,7 +365,7 @@ app.post('/:id/allocate', async (c) => {
 		return c.json({ error: 'Order must be in reconciling status' }, 400);
 	}
 
-	// Get all order items
+	// Get all order items (with product snapshots)
 	const items = await db
 		.select()
 		.from(orderItems)
@@ -390,19 +392,6 @@ app.post('/:id/allocate', async (c) => {
 			error: `${missingDelivery.length} item(s) are missing delivery status. All items must have a delivery status before generating allocations.`
 		}, 400);
 	}
-
-	// Get catalogue items
-	const productCodes = items.map((i) => i.productCode);
-	const catItems = await db
-		.select()
-		.from(catalogueItems)
-		.where(
-			and(
-				eq(catalogueItems.catalogueId, order.catalogueId),
-				inArray(catalogueItems.productCode, productCodes)
-			)
-		);
-	const catMap = new Map(catItems.map((ci) => [ci.productCode, ci]));
 
 	// Get all claims
 	const allClaims = await db
@@ -431,21 +420,18 @@ app.post('/:id/allocate', async (c) => {
 	}> = [];
 
 	for (const item of items) {
-		const ci = catMap.get(item.productCode);
-		if (!ci) continue;
-
 		const delivery = deliveryMap.get(item.id)!;
 		const itemClaims = claimsByItem.get(item.id) ?? [];
-		const caseSize = calculateCaseSize(ci.unitsPerCase, ci.packSize);
-		const rounding = calculateRounding(itemClaims, ci.unitsPerCase, ci.packSize);
+		const caseSize = calculateCaseSize(item.unitsPerCase, item.packSize);
+		const rounding = calculateRounding(itemClaims, item.unitsPerCase, item.packSize);
 
 		const computed = computeAllocations(
 			itemClaims.map((cl) => ({ memberId: cl.memberId, amount: cl.amount })),
 			delivery.status as 'arrived' | 'missing' | 'partial' | 'different_price',
 			caseSize,
 			rounding.casesNeeded,
-			ci.casePrice,
-			ci.vatRate,
+			item.casePrice,
+			item.vatRate,
 			delivery.actualPrice,
 			delivery.actualQuantity
 		);

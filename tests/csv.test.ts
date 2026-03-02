@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCatalogueCsv } from '../server/services/csv';
+import { parseCatalogueCsv } from '../shared/csv';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 

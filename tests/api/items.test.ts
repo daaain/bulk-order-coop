@@ -5,7 +5,9 @@ import {
 	resetDatabase,
 	authFetch,
 	seedMember,
-	seedCatalogue
+	seedCatalogueInR2,
+	seedOrderItem,
+	TEST_ITEMS
 } from './helpers';
 
 describe('Item routes', () => {
@@ -13,75 +15,95 @@ describe('Item routes', () => {
 	afterAll(teardownMiniflare);
 	beforeEach(resetDatabase);
 
-	/** Seed a member + catalogue + open order, return all IDs. */
+	/** Seed a member + catalogue in R2 + open order, return all IDs. */
 	async function seedOrder() {
 		const member = await seedMember('alice@test.local', 'Alice', 'AL');
-		const { catalogueId } = await seedCatalogue();
+		const { catalogueKey } = await seedCatalogueInR2();
 
 		const res = await authFetch('/orders', member.id, 'alice@test.local', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ name: 'Test Order', catalogueId })
+			body: JSON.stringify({ name: 'Test Order', catalogueKey })
 		});
 
-		const order = (await res.json()) as { id: string; catalogueId: string };
-		return { member, catalogueId, orderId: order.id };
-	}
-
-	/** Add an item to an order and return the response + parsed body. */
-	async function addItem(
-		orderId: string,
-		memberId: string,
-		email: string,
-		productCode: string
-	) {
-		const res = await authFetch(
-			`/orders/${orderId}/items`,
-			memberId,
-			email,
-			{
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ productCode })
-			}
-		);
-		const body = (await res.json()) as Record<string, unknown>;
-		return { status: res.status, body };
+		const order = (await res.json()) as { id: string; catalogueKey: string };
+		return { member, catalogueKey, orderId: order.id };
 	}
 
 	// ----------------------------------------------------------------
 	// POST /orders/:id/items
 	// ----------------------------------------------------------------
 	describe('POST /orders/:id/items', () => {
-		it('adds an item to an open order', async () => {
+		it('adds an item with full product snapshot', async () => {
 			const { member, orderId } = await seedOrder();
 
-			const { status, body } = await addItem(orderId, member.id, 'alice@test.local', '1001');
+			const { id } = await seedOrderItem(orderId, member.id, 'alice@test.local', '1001');
 
-			expect(status).toBe(201);
+			expect(id).toBeDefined();
+		});
+
+		it('returns the snapshot fields in the response', async () => {
+			const { member, orderId } = await seedOrder();
+
+			const res = await authFetch(
+				`/orders/${orderId}/items`,
+				member.id,
+				'alice@test.local',
+				{
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(TEST_ITEMS['1001'])
+				}
+			);
+
+			expect(res.status).toBe(201);
+			const body = (await res.json()) as Record<string, unknown>;
 			expect(body.id).toBeDefined();
 			expect(body.orderId).toBe(orderId);
 			expect(body.productCode).toBe('1001');
+			expect(body.description).toBe('Arborio Rice - white - Italy');
+			expect(body.casePrice).toBe(15.55);
 			expect(body.addedBy).toBe(member.id);
 		});
 
 		it('rejects a duplicate product code with 409', async () => {
 			const { member, orderId } = await seedOrder();
 
-			await addItem(orderId, member.id, 'alice@test.local', '1001');
-			const { status, body } = await addItem(orderId, member.id, 'alice@test.local', '1001');
+			await seedOrderItem(orderId, member.id, 'alice@test.local', '1001');
 
-			expect(status).toBe(409);
+			const res = await authFetch(
+				`/orders/${orderId}/items`,
+				member.id,
+				'alice@test.local',
+				{
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(TEST_ITEMS['1001'])
+				}
+			);
+
+			expect(res.status).toBe(409);
+			const body = (await res.json()) as { error: string };
 			expect(body.error).toMatch(/already/i);
 		});
 
-		it('rejects a non-existent product code with 404', async () => {
+		it('rejects missing description with 400', async () => {
 			const { member, orderId } = await seedOrder();
 
-			const { status, body } = await addItem(orderId, member.id, 'alice@test.local', '9999');
+			const res = await authFetch(
+				`/orders/${orderId}/items`,
+				member.id,
+				'alice@test.local',
+				{
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ productCode: '1001', casePrice: 10, vatRate: 0, packSize: 500, unit: 'g' })
+				}
+			);
 
-			expect(status).toBe(404);
-			expect(body.error).toMatch(/not found/i);
+			expect(res.status).toBe(400);
+			const body = (await res.json()) as { error: string };
+			expect(body.error).toMatch(/description/i);
 		});
 
 		it('rejects adding to a closed order with 400', async () => {
@@ -94,9 +116,19 @@ describe('Item routes', () => {
 				body: JSON.stringify({ status: 'closed' })
 			});
 
-			const { status, body } = await addItem(orderId, member.id, 'alice@test.local', '1001');
+			const res = await authFetch(
+				`/orders/${orderId}/items`,
+				member.id,
+				'alice@test.local',
+				{
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(TEST_ITEMS['1001'])
+				}
+			);
 
-			expect(status).toBe(400);
+			expect(res.status).toBe(400);
+			const body = (await res.json()) as { error: string };
 			expect(body.error).toMatch(/not open/i);
 		});
 	});
@@ -107,8 +139,8 @@ describe('Item routes', () => {
 	describe('GET /orders/:id/items', () => {
 		it('returns items with catalogue data and rounding info', async () => {
 			const { member, orderId } = await seedOrder();
-			expect((await addItem(orderId, member.id, 'alice@test.local', '1001')).status).toBe(201);
-			expect((await addItem(orderId, member.id, 'alice@test.local', '1002')).status).toBe(201);
+			await seedOrderItem(orderId, member.id, 'alice@test.local', '1001');
+			await seedOrderItem(orderId, member.id, 'alice@test.local', '1002');
 
 			const res = await authFetch(
 				`/orders/${orderId}/items`,
@@ -118,15 +150,17 @@ describe('Item routes', () => {
 
 			expect(res.status).toBe(200);
 			const body = (await res.json()) as Array<{
-				orderItem: { id: string; productCode: string };
-				catalogueItem: { productCode: string; productDescription: string };
+				orderItem: { id: string; productCode: string; description: string };
+				catalogueItem: { productCode: string; description: string };
 				claims: unknown[];
 				rounding: { totalClaimed: number; caseSize: number; casesNeeded: number };
 			}>;
 
 			expect(body).toHaveLength(2);
 			expect(body[0].orderItem).toBeDefined();
+			expect(body[0].orderItem.description).toBeDefined();
 			expect(body[0].catalogueItem).toBeDefined();
+			expect(body[0].catalogueItem.description).toBeDefined();
 			expect(body[0].claims).toBeDefined();
 			expect(body[0].rounding).toBeDefined();
 			expect(body[0].rounding.totalClaimed).toBe(0);
@@ -139,10 +173,10 @@ describe('Item routes', () => {
 	describe('DELETE /orders/:id/items/:itemId', () => {
 		it('removes an item with no claims', async () => {
 			const { member, orderId } = await seedOrder();
-			const { body: item } = await addItem(orderId, member.id, 'alice@test.local', '1001') as { body: { id: string }; status: number };
+			const { id: itemId } = await seedOrderItem(orderId, member.id, 'alice@test.local', '1001');
 
 			const res = await authFetch(
-				`/orders/${orderId}/items/${item.id}`,
+				`/orders/${orderId}/items/${itemId}`,
 				member.id,
 				'alice@test.local',
 				{ method: 'DELETE' }
@@ -164,11 +198,11 @@ describe('Item routes', () => {
 
 		it('rejects deletion when item has claims', async () => {
 			const { member, orderId } = await seedOrder();
-			const { body: item } = await addItem(orderId, member.id, 'alice@test.local', '1001') as { body: { id: string }; status: number };
+			const { id: itemId } = await seedOrderItem(orderId, member.id, 'alice@test.local', '1001');
 
 			// Add a claim on this item
 			await authFetch(
-				`/orders/${orderId}/items/${item.id}/claims`,
+				`/orders/${orderId}/items/${itemId}/claims`,
 				member.id,
 				'alice@test.local',
 				{
@@ -179,7 +213,7 @@ describe('Item routes', () => {
 			);
 
 			const res = await authFetch(
-				`/orders/${orderId}/items/${item.id}`,
+				`/orders/${orderId}/items/${itemId}`,
 				member.id,
 				'alice@test.local',
 				{ method: 'DELETE' }

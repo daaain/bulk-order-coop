@@ -1,6 +1,4 @@
 export interface CatalogueItem {
-  id: string;
-  catalogueId: string;
   productCode: string;
   description: string;
   brand: string | null;
@@ -19,7 +17,7 @@ export interface CatalogueItem {
 export interface Order {
   id: string;
   name: string;
-  catalogueId: string;
+  catalogueKey: string;
   status: 'open' | 'closed' | 'reconciling' | 'complete';
   deadline: number | null;
   inviteCode: string;
@@ -31,6 +29,17 @@ export interface OrderItem {
   id: string;
   orderId: string;
   productCode: string;
+  description: string;
+  brand: string | null;
+  organic: boolean;
+  casePrice: number;
+  vatRate: number;
+  vatPerCase: number;
+  unitsPerCase: number | null;
+  packSize: number;
+  unit: string;
+  rrp: number | null;
+  barcode: string | null;
   addedBy: string;
   addedAt: number;
   notes: string | null;

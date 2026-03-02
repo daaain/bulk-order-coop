@@ -5,16 +5,35 @@ import { nanoid } from 'nanoid';
 import type { Bindings } from '../index';
 import type { JwtPayload } from '../services/jwt';
 import { requireAuth } from '../middleware/auth';
-import { orders, orderMembers, orderItems, claims, catalogueItems, members } from '../../db/schema';
+import { orders, orderMembers, orderItems, claims, members } from '../../db/schema';
 import { validateAddItem } from '../services/items';
 import { calculateRounding } from '../../shared/rounding';
 import type { ClaimWithMember, EnrichedOrderItem, CatalogueItem } from '../../shared/types';
+
+/** Construct a CatalogueItem from an order_items row */
+function catalogueItemFromOrderItem(item: typeof orderItems.$inferSelect): CatalogueItem {
+	return {
+		productCode: item.productCode,
+		description: item.description,
+		brand: item.brand,
+		organic: Boolean(item.organic),
+		casePrice: item.casePrice,
+		vatRate: item.vatRate,
+		vatPerCase: item.vatPerCase,
+		unitsPerCase: item.unitsPerCase,
+		packSize: item.packSize,
+		unit: item.unit,
+		rrp: item.rrp,
+		barcode: item.barcode,
+		active: true
+	};
+}
 
 const app = new Hono<{ Bindings: Bindings; Variables: { jwtPayload: JwtPayload; memberId: string } }>();
 
 app.use('/*', requireAuth);
 
-// POST /:id/items — Add item to order
+// POST /:id/items — Add item to order (with full product snapshot)
 app.post('/:id/items', async (c) => {
 	const db = drizzle(c.env.DB);
 	const orderId = c.req.param('id');
@@ -50,21 +69,6 @@ app.post('/:id/items', async (c) => {
 		return c.json({ error: validated.error }, 400);
 	}
 
-	// Verify product exists in the order's catalogue
-	const [catItem] = await db
-		.select({ id: catalogueItems.id })
-		.from(catalogueItems)
-		.where(
-			and(
-				eq(catalogueItems.catalogueId, order.catalogueId),
-				eq(catalogueItems.productCode, validated.productCode)
-			)
-		);
-
-	if (!catItem) {
-		return c.json({ error: 'Product not found in catalogue' }, 404);
-	}
-
 	// Check for duplicate
 	const [existing] = await db
 		.select({ id: orderItems.id })
@@ -87,6 +91,17 @@ app.post('/:id/items', async (c) => {
 		id,
 		orderId,
 		productCode: validated.productCode,
+		description: validated.description,
+		brand: validated.brand,
+		organic: validated.organic ? 1 : 0,
+		casePrice: validated.casePrice,
+		vatRate: validated.vatRate,
+		vatPerCase: validated.vatPerCase,
+		unitsPerCase: validated.unitsPerCase,
+		packSize: validated.packSize,
+		unit: validated.unit,
+		rrp: validated.rrp,
+		barcode: validated.barcode,
 		addedBy: memberId,
 		addedAt: now,
 		notes: validated.notes ?? null
@@ -94,7 +109,25 @@ app.post('/:id/items', async (c) => {
 
 	await db.insert(orderItems).values(item);
 
-	return c.json(item, 201);
+	return c.json({
+		id,
+		orderId,
+		productCode: validated.productCode,
+		description: validated.description,
+		brand: validated.brand,
+		organic: validated.organic,
+		casePrice: validated.casePrice,
+		vatRate: validated.vatRate,
+		vatPerCase: validated.vatPerCase,
+		unitsPerCase: validated.unitsPerCase,
+		packSize: validated.packSize,
+		unit: validated.unit,
+		rrp: validated.rrp,
+		barcode: validated.barcode,
+		addedBy: memberId,
+		addedAt: now,
+		notes: validated.notes ?? null
+	}, 201);
 });
 
 // GET /:id/items — List order items with claims and rounding
@@ -113,17 +146,7 @@ app.get('/:id/items', async (c) => {
 		return c.json({ error: 'You are not a member of this order' }, 403);
 	}
 
-	// Get the order to find catalogueId
-	const [order] = await db
-		.select({ catalogueId: orders.catalogueId })
-		.from(orders)
-		.where(eq(orders.id, orderId));
-
-	if (!order) {
-		return c.json({ error: 'Order not found' }, 404);
-	}
-
-	// 1. Get all order items
+	// 1. Get all order items (now contain product snapshot)
 	const items = await db
 		.select()
 		.from(orderItems)
@@ -133,21 +156,7 @@ app.get('/:id/items', async (c) => {
 		return c.json([]);
 	}
 
-	// 2. Get catalogue items for all product codes
-	const productCodes = items.map((i) => i.productCode);
-	const catItems = await db
-		.select()
-		.from(catalogueItems)
-		.where(
-			and(
-				eq(catalogueItems.catalogueId, order.catalogueId),
-				inArray(catalogueItems.productCode, productCodes)
-			)
-		);
-
-	const catMap = new Map(catItems.map((ci) => [ci.productCode, ci]));
-
-	// 3. Get claims with member info for all order items
+	// 2. Get claims with member info for all order items
 	const itemIds = items.map((i) => i.id);
 	const claimRows = await db
 		.select({
@@ -175,21 +184,35 @@ app.get('/:id/items', async (c) => {
 
 	// Assemble enriched items
 	const result: EnrichedOrderItem[] = items.map((item) => {
-		const ci = catMap.get(item.productCode);
+		const ci = catalogueItemFromOrderItem(item);
 		const itemClaims = claimsByItem.get(item.id) ?? [];
 		const rounding = calculateRounding(
 			itemClaims,
-			ci?.unitsPerCase ?? null,
-			ci?.packSize ?? 1
+			item.unitsPerCase,
+			item.packSize
 		);
 
 		return {
-			orderItem: item,
-			catalogueItem: {
-				...ci!,
-				organic: Boolean(ci?.organic),
-				active: Boolean(ci?.active)
-			} as CatalogueItem,
+			orderItem: {
+				id: item.id,
+				orderId: item.orderId,
+				productCode: item.productCode,
+				description: item.description,
+				brand: item.brand,
+				organic: Boolean(item.organic),
+				casePrice: item.casePrice,
+				vatRate: item.vatRate,
+				vatPerCase: item.vatPerCase,
+				unitsPerCase: item.unitsPerCase,
+				packSize: item.packSize,
+				unit: item.unit,
+				rrp: item.rrp,
+				barcode: item.barcode,
+				addedBy: item.addedBy,
+				addedAt: item.addedAt,
+				notes: item.notes
+			},
+			catalogueItem: ci,
 			claims: itemClaims,
 			rounding
 		};
@@ -254,4 +277,5 @@ app.delete('/:id/items/:itemId', async (c) => {
 	return c.json({ success: true });
 });
 
+export { catalogueItemFromOrderItem };
 export default app;

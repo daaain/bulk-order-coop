@@ -5,11 +5,12 @@ import { nanoid } from 'nanoid';
 import type { Bindings } from '../index';
 import type { JwtPayload } from '../services/jwt';
 import { requireAuth } from '../middleware/auth';
-import { orders, orderMembers, orderItems, claims, catalogueItems } from '../../db/schema';
+import { orders, orderMembers, orderItems, claims } from '../../db/schema';
 import { validateClaim } from '../services/items';
 import { calculateRounding } from '../../shared/rounding';
 import { estimateCost, calculateCaseSize } from '../../shared/costs';
 import type { MyClaim } from '../../shared/types';
+import { catalogueItemFromOrderItem } from './items';
 
 const app = new Hono<{ Bindings: Bindings; Variables: { jwtPayload: JwtPayload; memberId: string } }>();
 
@@ -35,7 +36,7 @@ app.post('/:id/items/:itemId/claims', async (c) => {
 
 	// Check order is open
 	const [order] = await db
-		.select({ status: orders.status, catalogueId: orders.catalogueId })
+		.select({ status: orders.status })
 		.from(orders)
 		.where(eq(orders.id, orderId));
 
@@ -93,17 +94,7 @@ app.post('/:id/items/:itemId/claims', async (c) => {
 		.from(claims)
 		.where(eq(claims.orderItemId, itemId));
 
-	const [catItem] = await db
-		.select({ unitsPerCase: catalogueItems.unitsPerCase, packSize: catalogueItems.packSize })
-		.from(catalogueItems)
-		.where(
-			and(
-				eq(catalogueItems.catalogueId, order.catalogueId),
-				eq(catalogueItems.productCode, item.productCode)
-			)
-		);
-
-	const rounding = calculateRounding(allClaims, catItem?.unitsPerCase ?? null, catItem?.packSize ?? 1);
+	const rounding = calculateRounding(allClaims, item.unitsPerCase, item.packSize);
 
 	return c.json({ claim, rounding }, 201);
 });
@@ -128,7 +119,7 @@ app.put('/:id/items/:itemId/claims', async (c) => {
 
 	// Check order is open
 	const [order] = await db
-		.select({ status: orders.status, catalogueId: orders.catalogueId })
+		.select({ status: orders.status })
 		.from(orders)
 		.where(eq(orders.id, orderId));
 
@@ -181,17 +172,7 @@ app.put('/:id/items/:itemId/claims', async (c) => {
 		.from(claims)
 		.where(eq(claims.orderItemId, itemId));
 
-	const [catItem] = await db
-		.select({ unitsPerCase: catalogueItems.unitsPerCase, packSize: catalogueItems.packSize })
-		.from(catalogueItems)
-		.where(
-			and(
-				eq(catalogueItems.catalogueId, order.catalogueId),
-				eq(catalogueItems.productCode, item.productCode)
-			)
-		);
-
-	const rounding = calculateRounding(allClaims, catItem?.unitsPerCase ?? null, catItem?.packSize ?? 1);
+	const rounding = calculateRounding(allClaims, item.unitsPerCase, item.packSize);
 
 	return c.json({ claim: updatedClaim, rounding });
 });
@@ -215,7 +196,7 @@ app.delete('/:id/items/:itemId/claims', async (c) => {
 
 	// Check order is open
 	const [order] = await db
-		.select({ status: orders.status, catalogueId: orders.catalogueId })
+		.select({ status: orders.status })
 		.from(orders)
 		.where(eq(orders.id, orderId));
 
@@ -255,17 +236,7 @@ app.delete('/:id/items/:itemId/claims', async (c) => {
 		.from(claims)
 		.where(eq(claims.orderItemId, itemId));
 
-	const [catItem] = await db
-		.select({ unitsPerCase: catalogueItems.unitsPerCase, packSize: catalogueItems.packSize })
-		.from(catalogueItems)
-		.where(
-			and(
-				eq(catalogueItems.catalogueId, order.catalogueId),
-				eq(catalogueItems.productCode, item.productCode)
-			)
-		);
-
-	const rounding = calculateRounding(remainingClaims, catItem?.unitsPerCase ?? null, catItem?.packSize ?? 1);
+	const rounding = calculateRounding(remainingClaims, item.unitsPerCase, item.packSize);
 
 	return c.json({ rounding });
 });
@@ -284,16 +255,6 @@ app.get('/:id/claims/mine', async (c) => {
 
 	if (!membership) {
 		return c.json({ error: 'You are not a member of this order' }, 403);
-	}
-
-	// Get the order
-	const [order] = await db
-		.select({ catalogueId: orders.catalogueId })
-		.from(orders)
-		.where(eq(orders.id, orderId));
-
-	if (!order) {
-		return c.json({ error: 'Order not found' }, 404);
 	}
 
 	// Get all order items for this order
@@ -318,21 +279,6 @@ app.get('/:id/claims/mine', async (c) => {
 		return c.json({ claims: [], totals: { net: 0, vat: 0, gross: 0 } });
 	}
 
-	// Get catalogue items for the claimed order items
-	const claimedItems = items.filter((i) => myClaims.some((cl) => cl.orderItemId === i.id));
-	const productCodes = claimedItems.map((i) => i.productCode);
-
-	const catItems = await db
-		.select()
-		.from(catalogueItems)
-		.where(
-			and(
-				eq(catalogueItems.catalogueId, order.catalogueId),
-				inArray(catalogueItems.productCode, productCodes)
-			)
-		);
-
-	const catMap = new Map(catItems.map((ci) => [ci.productCode, ci]));
 	const itemMap = new Map(items.map((i) => [i.id, i]));
 
 	let totalNet = 0;
@@ -341,9 +287,9 @@ app.get('/:id/claims/mine', async (c) => {
 
 	const result: MyClaim[] = myClaims.map((claim) => {
 		const oi = itemMap.get(claim.orderItemId)!;
-		const ci = catMap.get(oi.productCode)!;
-		const caseSize = calculateCaseSize(ci.unitsPerCase, ci.packSize);
-		const cost = estimateCost(claim.amount, caseSize, ci.casePrice, ci.vatRate);
+		const ci = catalogueItemFromOrderItem(oi);
+		const caseSize = calculateCaseSize(oi.unitsPerCase, oi.packSize);
+		const cost = estimateCost(claim.amount, caseSize, oi.casePrice, oi.vatRate);
 
 		totalNet += cost.net;
 		totalVat += cost.vat;
@@ -351,12 +297,26 @@ app.get('/:id/claims/mine', async (c) => {
 
 		return {
 			claim,
-			orderItem: oi,
-			catalogueItem: {
-				...ci,
-				organic: Boolean(ci.organic),
-				active: Boolean(ci.active)
+			orderItem: {
+				id: oi.id,
+				orderId: oi.orderId,
+				productCode: oi.productCode,
+				description: oi.description,
+				brand: oi.brand,
+				organic: Boolean(oi.organic),
+				casePrice: oi.casePrice,
+				vatRate: oi.vatRate,
+				vatPerCase: oi.vatPerCase,
+				unitsPerCase: oi.unitsPerCase,
+				packSize: oi.packSize,
+				unit: oi.unit,
+				rrp: oi.rrp,
+				barcode: oi.barcode,
+				addedBy: oi.addedBy,
+				addedAt: oi.addedAt,
+				notes: oi.notes
 			},
+			catalogueItem: ci,
 			estimatedCost: cost
 		};
 	});

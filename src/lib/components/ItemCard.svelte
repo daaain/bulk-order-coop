@@ -21,7 +21,7 @@
 		currentMemberId?: string;
 		orderId?: string;
 		orderOpen?: boolean;
-		onaddtoorder?: (productCode: string) => void;
+		onaddtoorder?: () => void;
 		onclaim?: (itemId: string, amount: number, flexibility: string) => void;
 		onupdateclaim?: (itemId: string, amount: number, flexibility: string) => void;
 		onremoveclaim?: (itemId: string) => void;
@@ -44,7 +44,7 @@
 	let isOnOrder = $derived(!!orderItem);
 
 	function handleAddToOrder() {
-		onaddtoorder?.(item.productCode);
+		onaddtoorder?.();
 	}
 
 	async function handleClaimSubmit(amount: number, flexibility: string) {

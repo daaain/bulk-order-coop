@@ -9,6 +9,7 @@ import reconciliationRoutes from './routes/reconciliation';
 
 export type Bindings = {
   DB: D1Database;
+  CATALOGUE_BUCKET: R2Bucket;
   RESEND_API_KEY: string;
   JWT_SECRET: string;
 };

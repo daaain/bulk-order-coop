@@ -1,22 +1,40 @@
-import type { CatalogueItem } from '$shared/types';
-import { apiFetch } from './api';
+import type { ParsedCatalogueItem } from '$shared/csv';
+import { parseCatalogueCsv } from '$shared/csv';
+import { storeCatalogue, getCatalogueItems } from './catalogue-db';
 
-let cachedItems: CatalogueItem[] = [];
-let cachedCatalogueId: string | null = null;
-
-export async function loadCatalogue(catalogueId: string): Promise<CatalogueItem[]> {
-	if (cachedCatalogueId === catalogueId && cachedItems.length > 0) {
-		return cachedItems;
+export async function loadCatalogue(catalogueKey: string): Promise<ParsedCatalogueItem[]> {
+	// Check IndexedDB cache first
+	const cached = await getCatalogueItems(catalogueKey);
+	if (cached) {
+		return cached;
 	}
-	const data = await apiFetch<{ catalogue: any; items: CatalogueItem[] }>(
-		`/catalogues/${catalogueId}`
-	);
-	cachedItems = data.items;
-	cachedCatalogueId = catalogueId;
-	return cachedItems;
+
+	// Fetch CSV from R2 via API
+	const token = localStorage.getItem('auth_token');
+	const headers: Record<string, string> = {};
+	if (token) {
+		headers['Authorization'] = `Bearer ${token}`;
+	}
+
+	const res = await fetch(`/api/catalogues/${catalogueKey}`, {
+		headers,
+		cache: 'no-store'
+	});
+
+	if (!res.ok) {
+		throw new Error('Failed to load catalogue');
+	}
+
+	const csvText = await res.text();
+	const items = parseCatalogueCsv(csvText);
+
+	// Store in IndexedDB for future use
+	await storeCatalogue(catalogueKey, items);
+
+	return items;
 }
 
-export function searchItems(items: CatalogueItem[], query: string): CatalogueItem[] {
+export function searchItems(items: ParsedCatalogueItem[], query: string): ParsedCatalogueItem[] {
 	if (!query.trim()) return items;
 	const q = query.toLowerCase();
 	return items.filter(
@@ -28,13 +46,13 @@ export function searchItems(items: CatalogueItem[], query: string): CatalogueIte
 }
 
 export function filterItems(
-	items: CatalogueItem[],
+	items: ParsedCatalogueItem[],
 	filters: {
 		organic?: boolean;
 		brand?: string;
 		activeOnly?: boolean;
 	}
-): CatalogueItem[] {
+): ParsedCatalogueItem[] {
 	return items.filter((item) => {
 		if (filters.organic && !item.organic) return false;
 		if (filters.brand && item.brand !== filters.brand) return false;
@@ -43,7 +61,7 @@ export function filterItems(
 	});
 }
 
-export function getUniqueBrands(items: CatalogueItem[]): string[] {
+export function getUniqueBrands(items: ParsedCatalogueItem[]): string[] {
 	const brands = new Set(items.map((i) => i.brand).filter(Boolean) as string[]);
 	return [...brands].sort();
 }

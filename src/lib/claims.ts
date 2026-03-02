@@ -1,4 +1,5 @@
 import { apiFetch } from './api';
+import type { ParsedCatalogueItem } from '$shared/csv';
 import type { EnrichedOrderItem, MyClaim, OrderItem, Claim, RoundingResult } from '$shared/types';
 
 export function fetchOrderItems(orderId: string): Promise<EnrichedOrderItem[]> {
@@ -7,12 +8,12 @@ export function fetchOrderItems(orderId: string): Promise<EnrichedOrderItem[]> {
 
 export function addItemToOrder(
 	orderId: string,
-	productCode: string,
+	snapshot: ParsedCatalogueItem,
 	notes?: string
 ): Promise<OrderItem> {
 	return apiFetch(`/orders/${orderId}/items`, {
 		method: 'POST',
-		body: JSON.stringify({ productCode, notes })
+		body: JSON.stringify({ ...snapshot, notes })
 	});
 }
 

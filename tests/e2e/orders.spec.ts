@@ -8,9 +8,6 @@ test.describe('Orders', () => {
 		// Fill order name
 		await page.fill('input[placeholder="e.g. January 2026 Order"]', 'E2E Test Order');
 
-		// Select "Upload new CSV" radio (should be default)
-		await page.check('input[value="upload"]');
-
 		// Upload CSV file
 		const csvPath = path.resolve('tests/fixtures/invcat2.csv');
 		await page.setInputFiles('input[type="file"]', csvPath);

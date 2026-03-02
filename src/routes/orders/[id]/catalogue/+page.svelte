@@ -11,7 +11,8 @@
 	import SearchFilter from '$lib/components/SearchFilter.svelte';
 	import ItemCard from '$lib/components/ItemCard.svelte';
 	import { useAuth } from '$lib/auth.svelte';
-	import type { CatalogueItem, EnrichedOrderItem } from '$shared/types';
+	import type { ParsedCatalogueItem } from '$shared/csv';
+	import type { EnrichedOrderItem } from '$shared/types';
 	import type { LayoutData } from '../$types';
 
 	let { data }: { data: LayoutData } = $props();
@@ -21,7 +22,7 @@
 	let searchQuery = $state('');
 	let organicOnly = $state(false);
 	let selectedBrand = $state('');
-	let allItems = $state<CatalogueItem[]>([]);
+	let allItems = $state<ParsedCatalogueItem[]>([]);
 	let orderItemsList = $state<EnrichedOrderItem[]>([]);
 	let loading = $state(false);
 	let error = $state('');
@@ -47,7 +48,7 @@
 		error = '';
 		try {
 			const [catalogueItems, items] = await Promise.all([
-				loadCatalogue(data.order.catalogueId),
+				loadCatalogue(data.order.catalogueKey),
 				fetchOrderItems(data.orderId)
 			]);
 			allItems = catalogueItems;
@@ -67,9 +68,9 @@
 		}
 	}
 
-	async function handleAddToOrder(productCode: string) {
+	async function handleAddToOrder(item: ParsedCatalogueItem) {
 		try {
-			await addItemToOrder(data.orderId, productCode);
+			await addItemToOrder(data.orderId, item);
 			await refreshOrderItems();
 		} catch (err: unknown) {
 			error = (err as Error).message || 'Failed to add item';
@@ -127,14 +128,14 @@
 	</section>
 {:else}
 	<section>
-		{#each filteredItems as item (item.id)}
+		{#each filteredItems as item (item.productCode)}
 			<ItemCard
 				{item}
 				orderItem={orderItemMap.get(item.productCode)}
 				currentMemberId={auth.user?.id ?? ''}
 				orderId={data.orderId}
 				{orderOpen}
-				onaddtoorder={handleAddToOrder}
+				onaddtoorder={() => handleAddToOrder(item)}
 				onclaim={handleClaim}
 				onupdateclaim={handleUpdateClaim}
 				onremoveclaim={handleRemoveClaim}

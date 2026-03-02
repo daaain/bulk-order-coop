@@ -5,7 +5,7 @@ import { nanoid } from 'nanoid';
 import type { Bindings } from '../index';
 import type { JwtPayload } from '../services/jwt';
 import { requireAuth } from '../middleware/auth';
-import { orders, orderMembers, catalogues, members } from '../../db/schema';
+import { orders, orderMembers, members } from '../../db/schema';
 import {
 	validateCreateOrder,
 	validateUpdateOrder,
@@ -29,13 +29,9 @@ app.post('/', async (c) => {
 		return c.json({ error: validated.error }, 400);
 	}
 
-	// Verify catalogue exists
-	const [catalogue] = await db
-		.select({ id: catalogues.id })
-		.from(catalogues)
-		.where(eq(catalogues.id, validated.catalogueId));
-
-	if (!catalogue) {
+	// Verify catalogue exists in R2
+	const head = await c.env.CATALOGUE_BUCKET.head(validated.catalogueKey);
+	if (!head) {
 		return c.json({ error: 'Catalogue not found' }, 404);
 	}
 
@@ -46,7 +42,7 @@ app.post('/', async (c) => {
 	const order = {
 		id,
 		name: validated.name,
-		catalogueId: validated.catalogueId,
+		catalogueKey: validated.catalogueKey,
 		status: 'open',
 		deadline: validated.deadline ?? null,
 		inviteCode,

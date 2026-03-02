@@ -10,8 +10,6 @@ const TABLES = [
 	'order_items',
 	'order_members',
 	'orders',
-	'catalogue_items',
-	'catalogues',
 	'auth_tokens',
 	'members'
 ];
@@ -59,12 +57,6 @@ switch (command) {
 		for (const table of TABLES) {
 			db.run(`DELETE FROM ${table}`);
 		}
-		// Re-create system member for catalogue uploads (FK on catalogues.uploaded_by)
-		const now = Math.floor(Date.now() / 1000);
-		db.run(
-			'INSERT INTO members (id, email, name, initials, created_at) VALUES (?, ?, ?, ?, ?)',
-			['system', 'system@test.local', 'System', 'SYS', now]
-		);
 		console.log('Database cleared');
 		break;
 	}

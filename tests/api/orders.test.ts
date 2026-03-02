@@ -6,7 +6,7 @@ import {
 	appFetch,
 	authFetch,
 	seedMember,
-	seedCatalogue
+	seedCatalogueInR2
 } from './helpers';
 
 describe('Order routes', () => {
@@ -14,24 +14,24 @@ describe('Order routes', () => {
 	afterAll(teardownMiniflare);
 	beforeEach(resetDatabase);
 
-	/** Seed a member + catalogue, return both. */
+	/** Seed a member + catalogue in R2, return both. */
 	async function seedDeps() {
 		const member = await seedMember('alice@test.local', 'Alice', 'AL');
-		const { catalogueId } = await seedCatalogue();
-		return { member, catalogueId };
+		const { catalogueKey } = await seedCatalogueInR2();
+		return { member, catalogueKey };
 	}
 
 	/** Create an order via the API and return the response body. */
 	async function createOrder(
 		memberId: string,
 		email: string,
-		catalogueId: string,
+		catalogueKey: string,
 		name = 'Weekly Order'
 	) {
 		const res = await authFetch(`/orders`, memberId, email, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ name, catalogueId })
+			body: JSON.stringify({ name, catalogueKey })
 		});
 		return {
 			res,
@@ -40,7 +40,7 @@ describe('Order routes', () => {
 				name: string;
 				inviteCode: string;
 				status: string;
-				catalogueId: string;
+				catalogueKey: string;
 				createdBy: string;
 			}
 		};
@@ -51,26 +51,26 @@ describe('Order routes', () => {
 	// ----------------------------------------------------------------
 	describe('POST /orders', () => {
 		it('creates an order and auto-adds the organiser', async () => {
-			const { member, catalogueId } = await seedDeps();
+			const { member, catalogueKey } = await seedDeps();
 
-			const { res, body } = await createOrder(member.id, 'alice@test.local', catalogueId);
+			const { res, body } = await createOrder(member.id, 'alice@test.local', catalogueKey);
 
 			expect(res.status).toBe(201);
 			expect(body.id).toBeDefined();
 			expect(body.name).toBe('Weekly Order');
-			expect(body.catalogueId).toBe(catalogueId);
+			expect(body.catalogueKey).toBe(catalogueKey);
 			expect(body.inviteCode).toBeDefined();
 			expect(body.status).toBe('open');
 			expect(body.createdBy).toBe(member.id);
 		});
 
 		it('rejects a missing name with 400', async () => {
-			const { member, catalogueId } = await seedDeps();
+			const { member, catalogueKey } = await seedDeps();
 
 			const res = await authFetch(`/orders`, member.id, 'alice@test.local', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ catalogueId })
+				body: JSON.stringify({ catalogueKey })
 			});
 
 			expect(res.status).toBe(400);
@@ -82,7 +82,7 @@ describe('Order routes', () => {
 			const res = await appFetch('/orders', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ name: 'No Auth Order', catalogueId: 'fake' })
+				body: JSON.stringify({ name: 'No Auth Order', catalogueKey: 'fake' })
 			});
 
 			expect(res.status).toBe(401);
@@ -94,8 +94,8 @@ describe('Order routes', () => {
 	// ----------------------------------------------------------------
 	describe('GET /orders', () => {
 		it("returns the member's orders", async () => {
-			const { member, catalogueId } = await seedDeps();
-			await createOrder(member.id, 'alice@test.local', catalogueId);
+			const { member, catalogueKey } = await seedDeps();
+			await createOrder(member.id, 'alice@test.local', catalogueKey);
 
 			const res = await authFetch('/orders', member.id, 'alice@test.local');
 			expect(res.status).toBe(200);
@@ -122,8 +122,8 @@ describe('Order routes', () => {
 	// ----------------------------------------------------------------
 	describe('GET /orders/:id', () => {
 		it('returns the order with a members array', async () => {
-			const { member, catalogueId } = await seedDeps();
-			const { body: order } = await createOrder(member.id, 'alice@test.local', catalogueId);
+			const { member, catalogueKey } = await seedDeps();
+			const { body: order } = await createOrder(member.id, 'alice@test.local', catalogueKey);
 
 			const res = await authFetch(`/orders/${order.id}`, member.id, 'alice@test.local');
 			expect(res.status).toBe(200);
@@ -139,8 +139,8 @@ describe('Order routes', () => {
 		});
 
 		it('returns 403 for a non-member', async () => {
-			const { member, catalogueId } = await seedDeps();
-			const { body: order } = await createOrder(member.id, 'alice@test.local', catalogueId);
+			const { member, catalogueKey } = await seedDeps();
+			const { body: order } = await createOrder(member.id, 'alice@test.local', catalogueKey);
 
 			const outsider = await seedMember('outsider@test.local', 'Outsider', 'OU');
 			const res = await authFetch(
@@ -158,8 +158,8 @@ describe('Order routes', () => {
 	// ----------------------------------------------------------------
 	describe('PUT /orders/:id', () => {
 		it('allows the organiser to update the name', async () => {
-			const { member, catalogueId } = await seedDeps();
-			const { body: order } = await createOrder(member.id, 'alice@test.local', catalogueId);
+			const { member, catalogueKey } = await seedDeps();
+			const { body: order } = await createOrder(member.id, 'alice@test.local', catalogueKey);
 
 			const res = await authFetch(`/orders/${order.id}`, member.id, 'alice@test.local', {
 				method: 'PUT',
@@ -173,8 +173,8 @@ describe('Order routes', () => {
 		});
 
 		it('rejects updates from a regular member with 403', async () => {
-			const { member, catalogueId } = await seedDeps();
-			const { body: order } = await createOrder(member.id, 'alice@test.local', catalogueId);
+			const { member, catalogueKey } = await seedDeps();
+			const { body: order } = await createOrder(member.id, 'alice@test.local', catalogueKey);
 
 			// Join as a regular member
 			const joiner = await seedMember('bob@test.local', 'Bob', 'BO');
@@ -194,8 +194,8 @@ describe('Order routes', () => {
 		});
 
 		it('transitions open to closed', async () => {
-			const { member, catalogueId } = await seedDeps();
-			const { body: order } = await createOrder(member.id, 'alice@test.local', catalogueId);
+			const { member, catalogueKey } = await seedDeps();
+			const { body: order } = await createOrder(member.id, 'alice@test.local', catalogueKey);
 
 			const res = await authFetch(`/orders/${order.id}`, member.id, 'alice@test.local', {
 				method: 'PUT',
@@ -209,8 +209,8 @@ describe('Order routes', () => {
 		});
 
 		it('rejects an invalid status transition (open to complete) with 400', async () => {
-			const { member, catalogueId } = await seedDeps();
-			const { body: order } = await createOrder(member.id, 'alice@test.local', catalogueId);
+			const { member, catalogueKey } = await seedDeps();
+			const { body: order } = await createOrder(member.id, 'alice@test.local', catalogueKey);
 
 			const res = await authFetch(`/orders/${order.id}`, member.id, 'alice@test.local', {
 				method: 'PUT',
@@ -229,8 +229,8 @@ describe('Order routes', () => {
 	// ----------------------------------------------------------------
 	describe('POST /orders/:id/join', () => {
 		it('allows a member to join with the correct invite code', async () => {
-			const { member, catalogueId } = await seedDeps();
-			const { body: order } = await createOrder(member.id, 'alice@test.local', catalogueId);
+			const { member, catalogueKey } = await seedDeps();
+			const { body: order } = await createOrder(member.id, 'alice@test.local', catalogueKey);
 
 			const joiner = await seedMember('bob@test.local', 'Bob', 'BO');
 			const res = await authFetch(`/orders/${order.id}/join`, joiner.id, 'bob@test.local', {
@@ -254,8 +254,8 @@ describe('Order routes', () => {
 		});
 
 		it('rejects a wrong invite code with 400', async () => {
-			const { member, catalogueId } = await seedDeps();
-			const { body: order } = await createOrder(member.id, 'alice@test.local', catalogueId);
+			const { member, catalogueKey } = await seedDeps();
+			const { body: order } = await createOrder(member.id, 'alice@test.local', catalogueKey);
 
 			const joiner = await seedMember('bob@test.local', 'Bob', 'BO');
 			const res = await authFetch(`/orders/${order.id}/join`, joiner.id, 'bob@test.local', {
@@ -270,8 +270,8 @@ describe('Order routes', () => {
 		});
 
 		it('rejects a duplicate join with 409', async () => {
-			const { member, catalogueId } = await seedDeps();
-			const { body: order } = await createOrder(member.id, 'alice@test.local', catalogueId);
+			const { member, catalogueKey } = await seedDeps();
+			const { body: order } = await createOrder(member.id, 'alice@test.local', catalogueKey);
 
 			const joiner = await seedMember('bob@test.local', 'Bob', 'BO');
 			// First join succeeds

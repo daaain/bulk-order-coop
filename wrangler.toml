@@ -2,11 +2,12 @@ name = "bulk-order-coop"
 compatibility_date = "2025-02-28"
 pages_build_output_dir = "build"
 
-[pages.build]
-framework = "hono"
-
 [[d1_databases]]
 binding = "DB"
 database_name = "bulk-order-coop-db"
 database_id = "local"
 migrations_dir = "db/migrations"
+
+[[r2_buckets]]
+binding = "CATALOGUE_BUCKET"
+bucket_name = "bulk-order-coop-catalogues"

@@ -9,33 +9,33 @@ import {
 
 describe('validateCreateOrder', () => {
 	it('returns parsed body for valid input', () => {
-		const result = validateCreateOrder({ name: 'Jan Order', catalogueId: 'abc123' });
-		expect(result).toEqual({ name: 'Jan Order', catalogueId: 'abc123' });
+		const result = validateCreateOrder({ name: 'Jan Order', catalogueKey: 'abc123' });
+		expect(result).toEqual({ name: 'Jan Order', catalogueKey: 'abc123' });
 		expect('error' in result).toBe(false);
 	});
 
 	it('returns parsed body with optional deadline', () => {
 		const deadline = Date.now();
-		const result = validateCreateOrder({ name: 'Jan Order', catalogueId: 'abc123', deadline });
-		expect(result).toEqual({ name: 'Jan Order', catalogueId: 'abc123', deadline });
+		const result = validateCreateOrder({ name: 'Jan Order', catalogueKey: 'abc123', deadline });
+		expect(result).toEqual({ name: 'Jan Order', catalogueKey: 'abc123', deadline });
 	});
 
 	it('returns error for missing name', () => {
-		const result = validateCreateOrder({ catalogueId: 'abc123' });
+		const result = validateCreateOrder({ catalogueKey: 'abc123' });
 		expect(result).toHaveProperty('error');
 		expect((result as { error: string }).error).toMatch(/name/i);
 	});
 
 	it('returns error for empty name (whitespace only)', () => {
-		const result = validateCreateOrder({ name: '   ', catalogueId: 'abc123' });
+		const result = validateCreateOrder({ name: '   ', catalogueKey: 'abc123' });
 		expect(result).toHaveProperty('error');
 		expect((result as { error: string }).error).toMatch(/name/i);
 	});
 
-	it('returns error for missing catalogueId', () => {
+	it('returns error for missing catalogueKey', () => {
 		const result = validateCreateOrder({ name: 'Jan Order' });
 		expect(result).toHaveProperty('error');
-		expect((result as { error: string }).error).toMatch(/catalogueId/i);
+		expect((result as { error: string }).error).toMatch(/catalogueKey/i);
 	});
 });
 

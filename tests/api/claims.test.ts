@@ -5,7 +5,8 @@ import {
 	resetDatabase,
 	authFetch,
 	seedMember,
-	seedCatalogue
+	seedCatalogueInR2,
+	seedOrderItem
 } from './helpers';
 
 describe('Claim routes', () => {
@@ -16,28 +17,18 @@ describe('Claim routes', () => {
 	/** Seed member + catalogue + order + one item; return all IDs. */
 	async function seedOrderWithItem(productCode = '1001') {
 		const member = await seedMember('alice@test.local', 'Alice', 'AL');
-		const { catalogueId } = await seedCatalogue();
+		const { catalogueKey } = await seedCatalogueInR2();
 
 		const orderRes = await authFetch('/orders', member.id, 'alice@test.local', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ name: 'Test Order', catalogueId })
+			body: JSON.stringify({ name: 'Test Order', catalogueKey })
 		});
 		const order = (await orderRes.json()) as { id: string };
 
-		const itemRes = await authFetch(
-			`/orders/${order.id}/items`,
-			member.id,
-			'alice@test.local',
-			{
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ productCode })
-			}
-		);
-		const item = (await itemRes.json()) as { id: string };
+		const { id: itemId } = await seedOrderItem(order.id, member.id, 'alice@test.local', productCode);
 
-		return { member, catalogueId, orderId: order.id, itemId: item.id };
+		return { member, catalogueKey, orderId: order.id, itemId };
 	}
 
 	/** Helper to build the claims path. */

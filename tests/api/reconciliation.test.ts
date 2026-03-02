@@ -5,7 +5,8 @@ import {
 	resetDatabase,
 	authFetch,
 	seedMember,
-	seedCatalogue
+	seedCatalogueInR2,
+	seedOrderItem
 } from './helpers';
 
 beforeAll(setupMiniflare);
@@ -18,32 +19,22 @@ beforeEach(resetDatabase);
  */
 async function setupReconcilingOrder(opts?: { secondMember?: boolean }) {
 	const organiser = await seedMember('organiser@test.local', 'Organiser', 'ORG');
-	const { catalogueId } = await seedCatalogue();
+	const { catalogueKey } = await seedCatalogueInR2();
 
 	// Create order
 	const createRes = await authFetch('/orders', organiser.id, 'organiser@test.local', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ name: 'Recon Order', catalogueId })
+		body: JSON.stringify({ name: 'Recon Order', catalogueKey })
 	});
 	const order = await createRes.json() as { id: string; inviteCode: string };
 
 	// Add item (product code 1001: casePrice 15.55, 6 units, 500g, vatRate 0)
-	const addItemRes = await authFetch(
-		`/orders/${order.id}/items`,
-		organiser.id,
-		'organiser@test.local',
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ productCode: '1001' })
-		}
-	);
-	const item = await addItemRes.json() as { id: string };
+	const { id: itemId } = await seedOrderItem(order.id, organiser.id, 'organiser@test.local', '1001');
 
 	// Create claim (organiser claims 500g)
 	await authFetch(
-		`/orders/${order.id}/items/${item.id}/claims`,
+		`/orders/${order.id}/items/${itemId}/claims`,
 		organiser.id,
 		'organiser@test.local',
 		{
@@ -65,7 +56,7 @@ async function setupReconcilingOrder(opts?: { secondMember?: boolean }) {
 		});
 		// Claim 500g
 		await authFetch(
-			`/orders/${order.id}/items/${item.id}/claims`,
+			`/orders/${order.id}/items/${itemId}/claims`,
 			member.id,
 			'member@test.local',
 			{
@@ -90,7 +81,7 @@ async function setupReconcilingOrder(opts?: { secondMember?: boolean }) {
 		body: JSON.stringify({ status: 'reconciling' })
 	});
 
-	return { organiser, member, catalogueId, orderId: order.id, itemId: item.id };
+	return { organiser, member, catalogueKey, orderId: order.id, itemId };
 }
 
 describe('Reconciliation API', () => {
@@ -151,31 +142,21 @@ describe('Reconciliation API', () => {
 
 		it('rejects when order is not reconciling', async () => {
 			const organiser = await seedMember('organiser@test.local', 'Organiser', 'ORG');
-			const { catalogueId } = await seedCatalogue();
+			const { catalogueKey } = await seedCatalogueInR2();
 
 			// Create order (stays open)
 			const createRes = await authFetch('/orders', organiser.id, 'organiser@test.local', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ name: 'Open Order', catalogueId })
+				body: JSON.stringify({ name: 'Open Order', catalogueKey })
 			});
 			const order = await createRes.json() as { id: string };
 
 			// Add item
-			const addItemRes = await authFetch(
-				`/orders/${order.id}/items`,
-				organiser.id,
-				'organiser@test.local',
-				{
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ productCode: '1001' })
-				}
-			);
-			const item = await addItemRes.json() as { id: string };
+			const { id: itemId } = await seedOrderItem(order.id, organiser.id, 'organiser@test.local', '1001');
 
 			const res = await authFetch(
-				`/orders/${order.id}/items/${item.id}/delivery`,
+				`/orders/${order.id}/items/${itemId}/delivery`,
 				organiser.id,
 				'organiser@test.local',
 				{
@@ -232,12 +213,12 @@ describe('Reconciliation API', () => {
 
 		it('rejects when order is open', async () => {
 			const organiser = await seedMember('organiser@test.local', 'Organiser', 'ORG');
-			const { catalogueId } = await seedCatalogue();
+			const { catalogueKey } = await seedCatalogueInR2();
 
 			const createRes = await authFetch('/orders', organiser.id, 'organiser@test.local', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ name: 'Open Order', catalogueId })
+				body: JSON.stringify({ name: 'Open Order', catalogueKey })
 			});
 			const order = await createRes.json() as { id: string };
 
@@ -298,13 +279,10 @@ describe('Reconciliation API', () => {
 		});
 
 		it('rejects non-organiser', async () => {
-			const { orderId, itemId, member } = await setupReconcilingOrder({
+			const { orderId, member } = await setupReconcilingOrder({
 				secondMember: true
 			});
 
-			// Set delivery status as organiser would have — but we only need it if we're
-			// testing the allocate endpoint past the delivery check. Here we're testing
-			// the 403 which fires before the delivery check.
 			const res = await authFetch(
 				`/orders/${orderId}/allocate`,
 				member!.id,

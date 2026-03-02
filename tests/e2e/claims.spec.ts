@@ -13,7 +13,6 @@ test.describe('Claims', () => {
 			// Create order
 			await page.goto('/orders/new');
 			await page.fill('input[placeholder="e.g. January 2026 Order"]', 'E2E Test Order');
-			await page.check('input[value="upload"]');
 			await page.setInputFiles('input[type="file"]', path.resolve('tests/fixtures/invcat2.csv'));
 			await page.click('button:has-text("Create order")');
 			await page.waitForURL(/\/orders\/[a-zA-Z0-9_-]+$/);
