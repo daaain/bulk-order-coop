@@ -11,3 +11,7 @@ migrations_dir = "db/migrations"
 [[kv_namespaces]]
 binding = "CATALOGUE_KV"
 id = "0a32ccb8abb44721a30b7d3ede351c5a"
+
+[observability]
+enabled = true
+head_sampling_rate = 1
