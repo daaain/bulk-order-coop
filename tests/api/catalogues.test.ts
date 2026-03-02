@@ -4,7 +4,7 @@ import {
 	teardownMiniflare,
 	resetDatabase,
 	appFetch,
-	seedCatalogueInR2
+	seedCatalogue
 } from './helpers';
 
 const CSV_CONTENT = `Product code,order column 1,concatprodsize as text,organic,product description,RRP rounded to 2,brand,Change Marker,Case price,Vat Marker,Vat per case,Barcode inner,units case,pk size,unit,Vat rating,Active as a number
@@ -53,7 +53,7 @@ describe('Catalogue routes', () => {
 
 	describe('GET /catalogues/:key', () => {
 		it('serves CSV from R2 with correct content type', async () => {
-			const { catalogueKey } = await seedCatalogueInR2();
+			const { catalogueKey } = await seedCatalogue();
 
 			const res = await appFetch(`/catalogues/${catalogueKey}`);
 			expect(res.status).toBe(200);

@@ -4,7 +4,7 @@ import { parseCatalogueCsv } from '../../shared/csv';
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-// POST / — Upload a catalogue CSV to R2
+// POST / — Upload a catalogue CSV to KV
 app.post('/', async (c) => {
 	const formData = await c.req.formData();
 
@@ -21,24 +21,24 @@ app.post('/', async (c) => {
 	}
 
 	const key = `${Date.now()}-${file.name}`;
-	await c.env.CATALOGUE_BUCKET.put(key, csvText);
+	await c.env.CATALOGUE_KV.put(key, csvText);
 
 	return c.json({ key, itemCount: parsedItems.length }, 201);
 });
 
-// GET /:key{.+} — Serve CSV from R2
+// GET /:key{.+} — Serve CSV from KV
 app.get('/:key{.+}', async (c) => {
 	const key = c.req.param('key');
-	const object = await c.env.CATALOGUE_BUCKET.get(key);
+	const csvText = await c.env.CATALOGUE_KV.get(key);
 
-	if (!object) {
+	if (!csvText) {
 		return c.json({ error: 'Catalogue not found' }, 404);
 	}
 
 	c.header('Content-Type', 'text/csv');
 	c.header('Cache-Control', 'public, max-age=31536000, immutable');
 
-	return c.body(await object.text());
+	return c.body(csvText);
 });
 
 export default app;

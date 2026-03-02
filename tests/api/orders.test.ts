@@ -6,7 +6,7 @@ import {
 	appFetch,
 	authFetch,
 	seedMember,
-	seedCatalogueInR2
+	seedCatalogue
 } from './helpers';
 
 describe('Order routes', () => {
@@ -17,7 +17,7 @@ describe('Order routes', () => {
 	/** Seed a member + catalogue in R2, return both. */
 	async function seedDeps() {
 		const member = await seedMember('alice@test.local', 'Alice', 'AL');
-		const { catalogueKey } = await seedCatalogueInR2();
+		const { catalogueKey } = await seedCatalogue();
 		return { member, catalogueKey };
 	}
 

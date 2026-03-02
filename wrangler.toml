@@ -5,9 +5,9 @@ pages_build_output_dir = "build"
 [[d1_databases]]
 binding = "DB"
 database_name = "bulk-order-coop-db"
-database_id = "local"
+database_id = "4661c379-59f1-4a01-980b-73a443ee562b"
 migrations_dir = "db/migrations"
 
-[[r2_buckets]]
-binding = "CATALOGUE_BUCKET"
-bucket_name = "bulk-order-coop-catalogues"
+[[kv_namespaces]]
+binding = "CATALOGUE_KV"
+id = "0a32ccb8abb44721a30b7d3ede351c5a"

@@ -29,9 +29,9 @@ app.post('/', async (c) => {
 		return c.json({ error: validated.error }, 400);
 	}
 
-	// Verify catalogue exists in R2
-	const head = await c.env.CATALOGUE_BUCKET.head(validated.catalogueKey);
-	if (!head) {
+	// Verify catalogue exists in KV
+	const catalogueExists = await c.env.CATALOGUE_KV.get(validated.catalogueKey);
+	if (!catalogueExists) {
 		return c.json({ error: 'Catalogue not found' }, 404);
 	}
 

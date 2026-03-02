@@ -6,7 +6,7 @@ import { signJwt } from '../../server/services/jwt';
 
 let mf: Miniflare;
 let db: D1Database;
-let r2: R2Bucket;
+let kv: KVNamespace;
 
 const JWT_SECRET = 'test-secret';
 
@@ -96,11 +96,11 @@ export async function setupMiniflare() {
 	mf = new Miniflare({
 		modules: true,
 		d1Databases: ['DB'],
-		r2Buckets: ['CATALOGUE_BUCKET'],
+		kvNamespaces: ['CATALOGUE_KV'],
 		script: 'export default { fetch() { return new Response("") } }'
 	});
 	db = await mf.getD1Database('DB') as unknown as D1Database;
-	r2 = await mf.getR2Bucket('CATALOGUE_BUCKET') as unknown as R2Bucket;
+	kv = await mf.getKVNamespace('CATALOGUE_KV') as unknown as KVNamespace;
 
 	const migrationPath = resolve(process.cwd(), 'db/migrations/0000_famous_pete_wisdom.sql');
 	const raw = readFileSync(migrationPath, 'utf-8');
@@ -135,17 +135,17 @@ export async function resetDatabase() {
 		await db.exec(`DELETE FROM ${table}`);
 	}
 
-	// Clear R2 bucket
-	const listed = await r2.list();
-	for (const obj of listed.objects) {
-		await r2.delete(obj.key);
+	// Clear KV namespace
+	const listed = await kv.list();
+	for (const key of listed.keys) {
+		await kv.delete(key.name);
 	}
 }
 
 export async function appFetch(path: string, init?: RequestInit): Promise<Response> {
 	const bindings = {
 		DB: db,
-		CATALOGUE_BUCKET: r2,
+		CATALOGUE_KV: kv,
 		JWT_SECRET,
 		RESEND_API_KEY: 're_xxx'
 	} as unknown as Bindings;
@@ -183,9 +183,9 @@ export async function seedMember(
 	return { id, jwt };
 }
 
-export async function seedCatalogueInR2(): Promise<{ catalogueKey: string }> {
+export async function seedCatalogue(): Promise<{ catalogueKey: string }> {
 	const key = `test-${Date.now()}.csv`;
-	await r2.put(key, TEST_CSV);
+	await kv.put(key, TEST_CSV);
 	return { catalogueKey: key };
 }
 

@@ -44,10 +44,62 @@ The order totals page shows exactly what each member owes, broken down by net, V
 
 ## Self-hosting
 
-The app runs on Cloudflare Pages + Workers + D1 (SQLite). You'll need:
+The app runs on Cloudflare Pages + Workers + D1 (SQLite) + KV. You'll need:
 
 - A [Cloudflare](https://cloudflare.com) account (free tier works)
 - A [Resend](https://resend.com) account for sending magic link emails
 - [Bun](https://bun.sh) installed locally for building
 
-See [DEVELOPMENT.md](DEVELOPMENT.md) for setup instructions.
+### 1. Install dependencies and build
+
+```bash
+bun install
+bun run build
+```
+
+### 2. Create Cloudflare resources
+
+```bash
+# Create the Pages project
+bunx wrangler pages project create bulk-order-coop --production-branch main
+
+# Create the D1 database
+bunx wrangler d1 create bulk-order-coop-db
+
+# Create the KV namespace for catalogue storage
+bunx wrangler kv namespace create CATALOGUE_KV
+```
+
+Update `database_id` in `wrangler.toml` with the UUID returned by the D1 create command.
+
+### 3. Apply database migrations
+
+```bash
+bunx wrangler d1 migrations apply DB --remote
+```
+
+### 4. Set secrets
+
+In the Cloudflare dashboard (Workers & Pages → bulk-order-coop → Settings → Environment variables), add:
+
+| Secret | Description |
+|--------|-------------|
+| `RESEND_API_KEY` | Resend API key for sending magic link emails |
+| `JWT_SECRET` | Secret key for signing JWTs (generate with `openssl rand -base64 32`) |
+
+### 5. Deploy
+
+```bash
+bunx wrangler pages deploy build/
+```
+
+Or set up CI — see [DEVELOPMENT.md](DEVELOPMENT.md) for the GitHub Actions workflow and required secrets.
+
+### Updating the database schema
+
+D1 migrations are applied manually (too risky to automate in CI):
+
+```bash
+bun run db:generate    # Generate migration from schema changes
+bunx wrangler d1 migrations apply DB --remote
+```

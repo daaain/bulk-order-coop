@@ -9,7 +9,7 @@ export async function loadCatalogue(catalogueKey: string): Promise<ParsedCatalog
 		return cached;
 	}
 
-	// Fetch CSV from R2 via API
+	// Fetch CSV from KV via API
 	const token = localStorage.getItem('auth_token');
 	const headers: Record<string, string> = {};
 	if (token) {

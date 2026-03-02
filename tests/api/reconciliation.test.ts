@@ -5,7 +5,7 @@ import {
 	resetDatabase,
 	authFetch,
 	seedMember,
-	seedCatalogueInR2,
+	seedCatalogue,
 	seedOrderItem
 } from './helpers';
 
@@ -19,7 +19,7 @@ beforeEach(resetDatabase);
  */
 async function setupReconcilingOrder(opts?: { secondMember?: boolean }) {
 	const organiser = await seedMember('organiser@test.local', 'Organiser', 'ORG');
-	const { catalogueKey } = await seedCatalogueInR2();
+	const { catalogueKey } = await seedCatalogue();
 
 	// Create order
 	const createRes = await authFetch('/orders', organiser.id, 'organiser@test.local', {
@@ -142,7 +142,7 @@ describe('Reconciliation API', () => {
 
 		it('rejects when order is not reconciling', async () => {
 			const organiser = await seedMember('organiser@test.local', 'Organiser', 'ORG');
-			const { catalogueKey } = await seedCatalogueInR2();
+			const { catalogueKey } = await seedCatalogue();
 
 			// Create order (stays open)
 			const createRes = await authFetch('/orders', organiser.id, 'organiser@test.local', {
@@ -213,7 +213,7 @@ describe('Reconciliation API', () => {
 
 		it('rejects when order is open', async () => {
 			const organiser = await seedMember('organiser@test.local', 'Organiser', 'ORG');
-			const { catalogueKey } = await seedCatalogueInR2();
+			const { catalogueKey } = await seedCatalogue();
 
 			const createRes = await authFetch('/orders', organiser.id, 'organiser@test.local', {
 				method: 'POST',

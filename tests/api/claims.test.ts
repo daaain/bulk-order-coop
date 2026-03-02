@@ -5,7 +5,7 @@ import {
 	resetDatabase,
 	authFetch,
 	seedMember,
-	seedCatalogueInR2,
+	seedCatalogue,
 	seedOrderItem
 } from './helpers';
 
@@ -17,7 +17,7 @@ describe('Claim routes', () => {
 	/** Seed member + catalogue + order + one item; return all IDs. */
 	async function seedOrderWithItem(productCode = '1001') {
 		const member = await seedMember('alice@test.local', 'Alice', 'AL');
-		const { catalogueKey } = await seedCatalogueInR2();
+		const { catalogueKey } = await seedCatalogue();
 
 		const orderRes = await authFetch('/orders', member.id, 'alice@test.local', {
 			method: 'POST',

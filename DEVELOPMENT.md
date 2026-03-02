@@ -166,17 +166,6 @@ Set these in the Cloudflare dashboard (Workers & Pages → your project → Sett
 
 ### First deployment
 
-```bash
-# 1. Create the D1 database
-bunx wrangler d1 create bulk-order-coop-db
-
-# 2. Update wrangler.toml with the real database_id
-
-# 3. Apply migrations to production
-bunx wrangler d1 migrations apply DB --remote
-
-# 4. Deploy
-bunx wrangler pages deploy build/
-```
+See the [Self-hosting section in README.md](README.md#self-hosting) for full setup instructions (creating the Pages project, D1 database, R2 bucket, and secrets).
 
 D1 migrations are applied manually — they're too risky to automate in CI.
