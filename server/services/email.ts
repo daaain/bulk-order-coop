@@ -6,10 +6,14 @@ export async function sendMagicLink(
 ): Promise<void> {
 	const verifyUrl = `${baseUrl}/auth/verify?token=${token}`;
 
+	console.log(`[email] apiKey type=${typeof apiKey}, length=${apiKey?.length ?? 'N/A'}, prefix=${apiKey?.substring(0, 5) ?? 'N/A'}`);
+
 	if (!apiKey || apiKey === 're_xxx') {
-		console.log(`[email] Magic link for ${email}: ${verifyUrl}`);
+		console.log(`[email] DEV MODE — skipping Resend, magic link for ${email}: ${verifyUrl}`);
 		return;
 	}
+
+	console.log(`[email] Sending to ${email} via Resend...`);
 
 	const res = await fetch('https://api.resend.com/emails', {
 		method: 'POST',
@@ -30,8 +34,10 @@ export async function sendMagicLink(
 		})
 	});
 
+	const body = await res.text();
+	console.log(`[email] Resend response: status=${res.status}, body=${body}`);
+
 	if (!res.ok) {
-		const body = await res.text();
 		throw new Error(`Failed to send email: ${res.status} ${body}`);
 	}
 }
