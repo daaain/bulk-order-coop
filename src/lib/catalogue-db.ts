@@ -12,8 +12,11 @@ let dbPromise: Promise<IDBPDatabase<CatalogueDB>> | null = null;
 
 function openCatalogueDB(): Promise<IDBPDatabase<CatalogueDB>> {
 	if (!dbPromise) {
-		dbPromise = openDB<CatalogueDB>('catalogue-cache', 1, {
+		dbPromise = openDB<CatalogueDB>('catalogue-cache', 2, {
 			upgrade(db) {
+				if (db.objectStoreNames.contains('catalogues')) {
+					db.deleteObjectStore('catalogues');
+				}
 				db.createObjectStore('catalogues', { keyPath: 'key' });
 			}
 		});

@@ -46,6 +46,9 @@
 		gap: 0.5rem;
 		align-items: center;
 		margin-bottom: 1rem;
+		--pico-group-box-shadow: none;
+		--pico-group-box-shadow-focus-with-input: none;
+		box-shadow: none;
 	}
 
 	div[role="search"] input[type="search"] {

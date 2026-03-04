@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { fetchMyClaims, fetchOrderItems, updateClaim, removeClaim } from '$lib/claims';
-	import { formatPrice } from '$lib/format';
+	import { fetchMyClaims, fetchOrderItems, createClaim, updateClaim, removeClaim } from '$lib/claims';
+	import { formatPrice, formatCaseSize, calculateUnitPriceGross } from '$lib/format';
 	import ClaimForm from '$lib/components/ClaimForm.svelte';
 	import RoundingBar from '$lib/components/RoundingBar.svelte';
 	import ConfirmButton from '$lib/components/ConfirmButton.svelte';
@@ -18,9 +18,11 @@
 	let loading = $state(true);
 	let error = $state('');
 	let editingItemId = $state<string | null>(null);
+	let claimingItemId = $state<string | null>(null);
 	let saving = $state(false);
 
 	let orderOpen = $derived(data.order.status === 'open');
+	let currentMemberId = $derived(auth.user?.id ?? '');
 
 	const flexLabels: Record<string, string> = {
 		'*': 'Exact',
@@ -74,7 +76,36 @@
 		}
 	}
 
-	async function handleUpdate(mc: MyClaim, amount: number, flexibility: string) {
+	async function handleOrderItemClaim(oi: EnrichedOrderItem, amount: number, flexibility: string) {
+		saving = true;
+		try {
+			const packaged = isPackaged(oi.catalogueItem.unitsPerCase);
+			const apiAmount = packaged ? toNatural(amount, oi.catalogueItem.packSize) : amount;
+			const myClaim = oi.claims.find((c) => c.memberId === currentMemberId);
+			if (myClaim) {
+				await updateClaim(data.orderId, oi.orderItem.id, apiAmount, flexibility);
+			} else {
+				await createClaim(data.orderId, oi.orderItem.id, apiAmount, flexibility);
+			}
+			claimingItemId = null;
+			await loadData();
+		} catch (err: unknown) {
+			error = (err as Error).message || 'Failed to save claim';
+		} finally {
+			saving = false;
+		}
+	}
+
+	async function handleOrderItemRemoveClaim(itemId: string) {
+		try {
+			await removeClaim(data.orderId, itemId);
+			await loadData();
+		} catch (err: unknown) {
+			error = (err as Error).message || 'Failed to remove claim';
+		}
+	}
+
+	async function handleMyClaimUpdate(mc: MyClaim, amount: number, flexibility: string) {
 		saving = true;
 		try {
 			const apiAmount = isPackaged(mc.catalogueItem.unitsPerCase)
@@ -90,7 +121,7 @@
 		}
 	}
 
-	async function handleRemove(itemId: string) {
+	async function handleMyClaimRemove(itemId: string) {
 		try {
 			await removeClaim(data.orderId, itemId);
 			await loadData();
@@ -125,10 +156,20 @@
 	{:else}
 		{#each orderItems as oi (oi.orderItem.id)}
 			{@const packaged = isPackaged(oi.catalogueItem.unitsPerCase)}
+			{@const unitPrice = calculateUnitPriceGross(oi.catalogueItem.casePrice, oi.catalogueItem.vatPerCase, oi.catalogueItem.unitsPerCase, oi.catalogueItem.packSize, oi.catalogueItem.unit)}
+			{@const myClaim = oi.claims.find((c) => c.memberId === currentMemberId)}
 			<article>
 				<header>
 					<strong>{oi.catalogueItem.description}</strong>
+					{#if oi.catalogueItem.brand}
+						<small> — {oi.catalogueItem.brand}</small>
+					{/if}
 				</header>
+				<p>
+					{formatCaseSize(oi.catalogueItem.unitsPerCase, oi.catalogueItem.packSize, oi.catalogueItem.unit)}
+					&middot; {formatPrice(oi.catalogueItem.casePrice)}/case
+					&middot; {formatPrice(unitPrice.price)}/{unitPrice.perUnit}
+				</p>
 				{#if oi.claims.length > 0}
 					<p>
 						<small>
@@ -142,6 +183,35 @@
 					<p><small>No claims yet</small></p>
 				{/if}
 				<RoundingBar rounding={oi.rounding} packSize={packaged ? oi.catalogueItem.packSize : undefined} isPackaged={packaged} />
+
+				{#if orderOpen}
+					{#if claimingItemId === oi.orderItem.id}
+						<ClaimForm
+							unit={oi.catalogueItem.unit}
+							{packaged}
+							initialAmount={myClaim ? (packaged ? toPacks(myClaim.amount, oi.catalogueItem.packSize) : myClaim.amount) : 0}
+							initialFlexibility={myClaim?.flexibility ?? '*'}
+							loading={saving}
+							onsubmit={(amount, flexibility) => handleOrderItemClaim(oi, amount, flexibility)}
+							oncancel={() => (claimingItemId = null)}
+						/>
+					{:else if myClaim}
+						<div role="group">
+							<button class="outline" onclick={() => (claimingItemId = oi.orderItem.id)}>
+								Edit my claim ({formatClaimAmount(myClaim.amount, oi.catalogueItem.unitsPerCase, oi.catalogueItem.packSize, oi.catalogueItem.unit)})
+							</button>
+							<ConfirmButton
+								label="Remove"
+								onclick={() => handleOrderItemRemoveClaim(oi.orderItem.id)}
+								class="outline secondary"
+							/>
+						</div>
+					{:else}
+						<button class="outline" onclick={() => (claimingItemId = oi.orderItem.id)}>
+							Add claim
+						</button>
+					{/if}
+				{/if}
 			</article>
 		{/each}
 	{/if}
@@ -188,7 +258,7 @@
 											initialFlexibility={mc.claim.flexibility ?? '*'}
 											loading={saving}
 											onsubmit={(amount, flexibility) =>
-												handleUpdate(mc, amount, flexibility)}
+												handleMyClaimUpdate(mc, amount, flexibility)}
 											oncancel={() => (editingItemId = null)}
 										/>
 									{:else}
@@ -201,7 +271,7 @@
 											</button>
 											<ConfirmButton
 												label="Remove"
-												onclick={() => handleRemove(mc.claim.orderItemId)}
+												onclick={() => handleMyClaimRemove(mc.claim.orderItemId)}
 												class="outline secondary"
 											/>
 										</div>
