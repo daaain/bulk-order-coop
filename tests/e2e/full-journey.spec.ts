@@ -23,13 +23,13 @@ test.describe('Full order journey', () => {
 		await page.locator('button:has-text("Add to order")').first().click();
 		await expect(page.locator('button:has-text("Add claim")').first()).toBeVisible();
 
-		// 3. Create a claim on the item
+		// 3. Create a claim on the item (Arborio Rice is 6×500g, packaged — claim in packs)
 		await page.locator('button:has-text("Add claim")').first().click();
-		await page.fill('input[type="number"]', '3000');
+		await page.fill('input[type="number"]', '6');
 		await page.click('button:has-text("Save claim")');
 
 		// Verify claim was created
-		await page.click('a:has-text("My Claims")');
+		await page.click('a:has-text("Claims")');
 		await page.waitForURL(/\/claims/);
 		await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 15000 });
 

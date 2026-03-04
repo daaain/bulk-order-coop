@@ -156,6 +156,36 @@ describe('parseCatalogueCsv', () => {
 		});
 	});
 
+	describe('on offer flag (Change Marker)', () => {
+		it('sets onOffer to true when Change Marker is "r"', () => {
+			const csv = makeCsv(
+				'40505,,5x1kg,organic,Fine Plain Wholemeal Flour,1.48,Doves Farm,r,5.55,,0,5011766010030,5,1,kg,0,1'
+			);
+			expect(parseCatalogueCsv(csv)[0].onOffer).toBe(true);
+		});
+
+		it('sets onOffer to true when Change Marker is "R" (case-insensitive)', () => {
+			const csv = makeCsv(
+				'40505,,5x1kg,organic,Fine Plain Wholemeal Flour,1.48,Doves Farm,R,5.55,,0,5011766010030,5,1,kg,0,1'
+			);
+			expect(parseCatalogueCsv(csv)[0].onOffer).toBe(true);
+		});
+
+		it('sets onOffer to false when Change Marker is empty', () => {
+			const csv = makeCsv(
+				'1001,,6x500g,organic,Arborio Rice,3.46,Infinity Foods,,15.55,,0,5028869010010,6,500,g,0,1'
+			);
+			expect(parseCatalogueCsv(csv)[0].onOffer).toBe(false);
+		});
+
+		it('sets onOffer to false when Change Marker has other value', () => {
+			const csv = makeCsv(
+				'1001,,6x500g,organic,Arborio Rice,3.46,Infinity Foods,x,15.55,,0,5028869010010,6,500,g,0,1'
+			);
+			expect(parseCatalogueCsv(csv)[0].onOffer).toBe(false);
+		});
+	});
+
 	describe('active flag', () => {
 		it('sets active to true when "Active as a number" is 1', () => {
 			const csv = makeCsv(

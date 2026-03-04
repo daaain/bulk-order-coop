@@ -21,6 +21,7 @@
 
 	let searchQuery = $state('');
 	let organicOnly = $state(false);
+	let onOfferOnly = $state(false);
 	let selectedBrand = $state('');
 	let allItems = $state<ParsedCatalogueItem[]>([]);
 	let orderItemsList = $state<EnrichedOrderItem[]>([]);
@@ -35,6 +36,7 @@
 		let items = searchItems(allItems, searchQuery);
 		items = filterItems(items, {
 			organic: organicOnly || undefined,
+			onOffer: onOfferOnly || undefined,
 			brand: selectedBrand || undefined
 		});
 		return items;
@@ -108,6 +110,7 @@
 <SearchFilter
 	bind:query={searchQuery}
 	bind:organicOnly
+	bind:onOfferOnly
 	bind:selectedBrand
 	{brands}
 />

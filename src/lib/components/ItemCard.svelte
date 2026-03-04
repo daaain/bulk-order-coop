@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { CatalogueItem, EnrichedOrderItem } from '$shared/types';
-	import { formatPrice, formatCaseSize } from '$lib/format';
+	import { formatPrice, formatCaseSize, calculateUnitPriceGross } from '$lib/format';
 	import RoundingBar from './RoundingBar.svelte';
 	import ClaimForm from './ClaimForm.svelte';
 	import ConfirmButton from './ConfirmButton.svelte';
@@ -42,6 +42,27 @@
 	);
 
 	let isOnOrder = $derived(!!orderItem);
+	let isPackaged = $derived(item.unitsPerCase != null && item.unitsPerCase > 0);
+
+	let unitPrice = $derived(
+		calculateUnitPriceGross(item.casePrice, item.vatPerCase, item.unitsPerCase, item.packSize, item.unit)
+	);
+
+	function toPacks(amount: number): number {
+		return item.packSize > 0 ? Math.round(amount / item.packSize) : amount;
+	}
+
+	function toNatural(packs: number): number {
+		return packs * item.packSize;
+	}
+
+	function formatClaimAmount(amount: number): string {
+		if (isPackaged) {
+			const packs = toPacks(amount);
+			return `${packs} pack${packs !== 1 ? 's' : ''}`;
+		}
+		return `${amount}${item.unit}`;
+	}
 
 	function handleAddToOrder() {
 		onaddtoorder?.();
@@ -51,10 +72,11 @@
 		if (!orderItem) return;
 		loading = true;
 		try {
+			const apiAmount = isPackaged ? toNatural(amount) : amount;
 			if (myClaim) {
-				await onupdateclaim?.(orderItem.orderItem.id, amount, flexibility);
+				await onupdateclaim?.(orderItem.orderItem.id, apiAmount, flexibility);
 			} else {
-				await onclaim?.(orderItem.orderItem.id, amount, flexibility);
+				await onclaim?.(orderItem.orderItem.id, apiAmount, flexibility);
 			}
 			showClaimForm = false;
 		} finally {
@@ -71,6 +93,9 @@
 <article>
 	<header>
 		<strong>{item.description}</strong>
+		{#if item.onOffer}
+			<mark style="background: #e74c3c; color: white;">On offer</mark>
+		{/if}
 		{#if item.organic}
 			<mark>Organic</mark>
 		{/if}
@@ -86,9 +111,7 @@
 	<p>
 		{formatCaseSize(item.unitsPerCase, item.packSize, item.unit)}
 		&middot; {formatPrice(item.casePrice)}/case
-		{#if item.rrp}
-			&middot; RRP {formatPrice(item.rrp)}
-		{/if}
+		&middot; {formatPrice(unitPrice.price)}/{unitPrice.perUnit}
 	</p>
 
 	{#if isOnOrder && orderItem}
@@ -98,19 +121,20 @@
 				<small>
 					{#each orderItem.claims as claim, i}
 						{#if i > 0}, {/if}
-						<strong>{claim.memberInitials ?? '??'}</strong>: {claim.amount}{item.unit}{#if claim.flexibility && claim.flexibility !== '*'}{flexLabels[claim.flexibility]}{/if}
+						<strong>{claim.memberInitials ?? '??'}</strong>: {formatClaimAmount(claim.amount)}{#if claim.flexibility && claim.flexibility !== '*'}{flexLabels[claim.flexibility]}{/if}
 					{/each}
 				</small>
 			</p>
 		{/if}
 
-		<RoundingBar rounding={orderItem.rounding} />
+		<RoundingBar rounding={orderItem.rounding} packSize={isPackaged ? item.packSize : undefined} {isPackaged} />
 
 		{#if orderOpen}
 			{#if showClaimForm}
 				<ClaimForm
 					unit={item.unit}
-					initialAmount={myClaim?.amount ?? 0}
+					packaged={isPackaged}
+					initialAmount={isPackaged ? toPacks(myClaim?.amount ?? 0) : (myClaim?.amount ?? 0)}
 					initialFlexibility={myClaim?.flexibility ?? '*'}
 					{loading}
 					onsubmit={handleClaimSubmit}
@@ -119,7 +143,7 @@
 			{:else if myClaim}
 				<div role="group">
 					<button class="outline" onclick={() => (showClaimForm = true)}>
-						Edit my claim ({myClaim.amount}{item.unit})
+						Edit my claim ({formatClaimAmount(myClaim.amount)})
 					</button>
 					<ConfirmButton
 						label="Remove"

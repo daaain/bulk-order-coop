@@ -1,7 +1,15 @@
 <script lang="ts">
 	import type { RoundingResult } from '$shared/types';
 
-	let { rounding }: { rounding: RoundingResult } = $props();
+	let {
+		rounding,
+		packSize,
+		isPackaged = false
+	}: {
+		rounding: RoundingResult;
+		packSize?: number;
+		isPackaged?: boolean;
+	} = $props();
 
 	const statusLabels: Record<string, string> = {
 		ready: 'Ready to order',
@@ -24,6 +32,10 @@
 	);
 
 	let colour = $derived(statusColours[rounding.status] ?? '#aaa');
+
+	function toPackDisplay(amount: number): number {
+		return packSize && packSize > 0 ? Math.round(amount / packSize) : amount;
+	}
 </script>
 
 <div class="rounding-bar">
@@ -31,10 +43,14 @@
 	<small style="color: {colour};">
 		{statusLabels[rounding.status]}
 		{#if rounding.gap > 0 && rounding.status !== 'ready'}
-			— need {rounding.gap} more
+			— need {isPackaged ? `${toPackDisplay(rounding.gap)} more pack${toPackDisplay(rounding.gap) !== 1 ? 's' : ''}` : `${rounding.gap} more`}
 		{/if}
 		&middot;
-		{rounding.totalClaimed}/{rounding.casesNeeded * rounding.caseSize}
+		{#if isPackaged}
+			{toPackDisplay(rounding.totalClaimed)}/{toPackDisplay(rounding.casesNeeded * rounding.caseSize)} packs
+		{:else}
+			{rounding.totalClaimed}/{rounding.casesNeeded * rounding.caseSize}
+		{/if}
 		({rounding.casesNeeded} case{rounding.casesNeeded !== 1 ? 's' : ''})
 	</small>
 </div>

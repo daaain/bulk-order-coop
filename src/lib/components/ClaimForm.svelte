@@ -1,6 +1,7 @@
 <script lang="ts">
 	let {
 		unit = '',
+		packaged = false,
 		initialAmount = 0,
 		initialFlexibility = '*',
 		loading = false,
@@ -8,6 +9,7 @@
 		oncancel
 	}: {
 		unit?: string;
+		packaged?: boolean;
 		initialAmount?: number;
 		initialFlexibility?: string;
 		loading?: boolean;
@@ -20,9 +22,8 @@
 	// svelte-ignore state_referenced_locally
 	let flexibility = $state(initialFlexibility);
 
-	let step = $derived(
-		unit === 'kg' || unit === 'l' || unit === 'g' || unit === 'ml' ? 0.1 : 1
-	);
+	let step = $derived(packaged ? 1 : (unit === 'kg' || unit === 'l' || unit === 'g' || unit === 'ml' ? 0.1 : 1));
+	let amountLabel = $derived(packaged ? 'Packs' : `Amount${unit ? ` (${unit})` : ''}`);
 </script>
 
 <form
@@ -32,8 +33,8 @@
 	}}
 >
 	<label>
-		Amount{unit ? ` (${unit})` : ''}
-		<input type="number" bind:value={amount} min={step} {step} required disabled={loading} />
+		{amountLabel}
+		<input type="number" bind:value={amount} min={packaged ? 1 : step} {step} required disabled={loading} />
 	</label>
 
 	<fieldset>
@@ -67,3 +68,24 @@
 		{/if}
 	</div>
 </form>
+
+<style>
+	form {
+		margin-top: 0.5rem;
+	}
+
+	fieldset {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem 1rem;
+		margin-bottom: 0.5rem;
+	}
+
+	fieldset label {
+		margin-bottom: 0;
+	}
+
+	fieldset legend {
+		margin-bottom: 0.25rem;
+	}
+</style>

@@ -12,6 +12,7 @@ export interface ParsedCatalogueItem {
 	rrp: number | null;
 	barcode: string;
 	active: boolean;
+	onOffer: boolean;
 }
 
 // Column indices from the Infinity Foods CSV header:
@@ -39,6 +40,7 @@ const COL = {
 	DESCRIPTION: 4,
 	RRP: 5,
 	BRAND: 6,
+	CHANGE_MARKER: 7,
 	CASE_PRICE: 8,
 	VAT_PER_CASE: 10,
 	BARCODE: 11,
@@ -95,7 +97,8 @@ export function parseCatalogueCsv(csv: string): ParsedCatalogueItem[] {
 			unit: cols[COL.UNIT].trim(),
 			rrp: rrpStr ? parseFloat(rrpStr) : null,
 			barcode: cols[COL.BARCODE].trim(),
-			active: cols[COL.ACTIVE].trim() === '1'
+			active: cols[COL.ACTIVE].trim() === '1',
+			onOffer: cols[COL.CHANGE_MARKER].trim().toLowerCase() === 'r'
 		});
 	}
 

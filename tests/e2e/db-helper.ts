@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { Database } from 'bun:sqlite';
-import { readdirSync, existsSync } from 'node:fs';
+import { readdirSync, existsSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 
 const TABLES = [
@@ -19,15 +19,21 @@ function findD1Database(): string {
 	if (!existsSync(base)) throw new Error(`D1 directory not found: ${base}`);
 
 	const entries = readdirSync(base);
+	const candidates: { path: string; mtime: number }[] = [];
 	for (const entry of entries) {
 		const fullPath = join(base, entry);
-		// Direct .sqlite file (e.g. <hash>.sqlite)
-		if (entry.endsWith('.sqlite')) return fullPath;
-		// Subdirectory containing db.sqlite
+		if (entry.endsWith('.sqlite')) {
+			candidates.push({ path: fullPath, mtime: statSync(fullPath).mtimeMs });
+		}
 		const dbPath = join(fullPath, 'db.sqlite');
-		if (existsSync(dbPath)) return dbPath;
+		if (existsSync(dbPath)) {
+			candidates.push({ path: dbPath, mtime: statSync(dbPath).mtimeMs });
+		}
 	}
-	throw new Error('D1 database file not found');
+	if (candidates.length === 0) throw new Error('D1 database file not found');
+	// Pick the most recently modified database
+	candidates.sort((a, b) => b.mtime - a.mtime);
+	return candidates[0].path;
 }
 
 const command = process.argv[2];

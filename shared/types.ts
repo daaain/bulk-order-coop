@@ -12,6 +12,7 @@ export interface CatalogueItem {
   rrp: number | null;
   barcode: string | null;
   active: boolean;
+  onOffer?: boolean;
 }
 
 export interface Order {

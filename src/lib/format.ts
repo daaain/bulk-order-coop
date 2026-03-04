@@ -18,3 +18,36 @@ export function formatCaseSize(unitsPerCase: number | null, packSize: number, un
   }
   return formatWeight(packSize, unit);
 }
+
+export function calculateUnitPriceGross(
+  casePrice: number,
+  vatPerCase: number,
+  unitsPerCase: number | null,
+  packSize: number,
+  unit: string
+): { price: number; perUnit: string } {
+  const gross = casePrice + vatPerCase;
+
+  // Packaged items: price per pack
+  if (unitsPerCase) {
+    return { price: gross / unitsPerCase, perUnit: 'pack' };
+  }
+
+  // Loose items: price per kg or l
+  if (packSize === 0) {
+    const perUnit = unit === 'ml' || unit === 'l' ? 'l' : 'kg';
+    return { price: 0, perUnit };
+  }
+
+  if (unit === 'g') {
+    return { price: (gross / packSize) * 1000, perUnit: 'kg' };
+  }
+  if (unit === 'ml') {
+    return { price: (gross / packSize) * 1000, perUnit: 'l' };
+  }
+  if (unit === 'l') {
+    return { price: gross / packSize, perUnit: 'l' };
+  }
+  // kg or other
+  return { price: gross / packSize, perUnit: 'kg' };
+}

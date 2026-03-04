@@ -41,7 +41,7 @@
   <ul>
     <li><a href="/orders/{data.orderId}">Dashboard</a></li>
     <li><a href="/orders/{data.orderId}/catalogue">Catalogue</a></li>
-    <li><a href="/orders/{data.orderId}/claims">My Claims</a></li>
+    <li><a href="/orders/{data.orderId}/claims">Claims</a></li>
     <li><a href="/orders/{data.orderId}/reconciliation">Reconciliation</a></li>
   </ul>
 </nav>

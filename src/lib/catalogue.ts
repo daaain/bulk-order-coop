@@ -49,12 +49,14 @@ export function filterItems(
 	items: ParsedCatalogueItem[],
 	filters: {
 		organic?: boolean;
+		onOffer?: boolean;
 		brand?: string;
 		activeOnly?: boolean;
 	}
 ): ParsedCatalogueItem[] {
 	return items.filter((item) => {
 		if (filters.organic && !item.organic) return false;
+		if (filters.onOffer && !item.onOffer) return false;
 		if (filters.brand && item.brand !== filters.brand) return false;
 		if (filters.activeOnly && !item.active) return false;
 		return true;

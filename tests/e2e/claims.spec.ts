@@ -91,7 +91,7 @@ test.describe('Claims', () => {
 		await expect(firstArticle.locator('button:has-text("Edit my claim")')).toBeVisible();
 
 		// Navigate to My Claims
-		await page.click('a:has-text("My Claims")');
+		await page.click('a:has-text("Claims")');
 		await page.waitForURL(/\/claims/);
 		await page.waitForLoadState('networkidle');
 
@@ -112,7 +112,7 @@ test.describe('Claims', () => {
 		await ensureClaimExists(firstArticle, '100');
 
 		// Navigate to claims tab
-		await page.click('a:has-text("My Claims")');
+		await page.click('a:has-text("Claims")');
 		await page.waitForURL(/\/claims/);
 
 		// Wait for claims to load
