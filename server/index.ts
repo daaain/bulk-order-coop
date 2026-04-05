@@ -12,6 +12,7 @@ export type Bindings = {
   CATALOGUE_KV: KVNamespace;
   RESEND_API_KEY: string;
   JWT_SECRET: string;
+  EMAIL_FROM?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>().basePath('/api');

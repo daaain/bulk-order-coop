@@ -30,7 +30,7 @@ app.post('/magic-link', async (c) => {
   });
 
   const baseUrl = new URL(c.req.url).origin;
-  await sendMagicLink(c.env.RESEND_API_KEY, email, token, baseUrl);
+  await sendMagicLink(c.env.RESEND_API_KEY, email, token, baseUrl, c.env.EMAIL_FROM);
 
   return c.json({ message: 'Magic link sent' });
 });

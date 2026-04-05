@@ -1,8 +1,11 @@
+const DEFAULT_EMAIL_FROM = 'Bulk Order Co-op <onboarding@resend.dev>';
+
 export async function sendMagicLink(
   apiKey: string,
   email: string,
   token: string,
   baseUrl: string,
+  fromAddress?: string,
 ): Promise<void> {
   const verifyUrl = `${baseUrl}/auth/verify?token=${token}`;
 
@@ -18,7 +21,7 @@ export async function sendMagicLink(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      from: 'Bulk Order Co-op <onboarding@resend.dev>',
+      from: fromAddress || DEFAULT_EMAIL_FROM,
       to: [email],
       subject: 'Your sign-in link',
       html: `
