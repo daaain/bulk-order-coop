@@ -3,7 +3,7 @@ import type { Claim, RoundingResult, RoundingStatus } from './types';
 export function calculateRounding(
   claims: Pick<Claim, 'amount' | 'flexibility'>[],
   unitsPerCase: number | null,
-  packSize: number
+  packSize: number,
 ): RoundingResult {
   const totalClaimed = claims.reduce((sum, c) => sum + c.amount, 0);
 
@@ -20,9 +20,15 @@ export function calculateRounding(
   let status: RoundingStatus;
   if (gap === 0) {
     status = 'ready';
-  } else if (gap < caseSize * 0.2 && claims.some((c) => c.flexibility === '+' || c.flexibility === '+-')) {
+  } else if (
+    gap < caseSize * 0.2 &&
+    claims.some((c) => c.flexibility === '+' || c.flexibility === '+-')
+  ) {
     status = 'nearly';
-  } else if (totalClaimed > casesNeeded * caseSize && claims.some((c) => c.flexibility === '-' || c.flexibility === '+-')) {
+  } else if (
+    totalClaimed > casesNeeded * caseSize &&
+    claims.some((c) => c.flexibility === '-' || c.flexibility === '+-')
+  ) {
     status = 'over';
   } else {
     status = 'needs_more';

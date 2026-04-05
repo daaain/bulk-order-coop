@@ -12,7 +12,11 @@ export function formatWeight(amount: number, unit: string): string {
   return `${amount}${unit}`;
 }
 
-export function formatCaseSize(unitsPerCase: number | null, packSize: number, unit: string): string {
+export function formatCaseSize(
+  unitsPerCase: number | null,
+  packSize: number,
+  unit: string,
+): string {
   if (unitsPerCase) {
     return `${unitsPerCase}×${formatWeight(packSize, unit)}`;
   }
@@ -24,7 +28,7 @@ export function calculateUnitPriceGross(
   vatPerCase: number,
   unitsPerCase: number | null,
   packSize: number,
-  unit: string
+  unit: string,
 ): { price: number; perUnit: string } {
   const gross = casePrice + vatPerCase;
 

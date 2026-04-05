@@ -9,14 +9,14 @@
 
 ## Tech stack
 
-| Layer | Technology |
-|-------|------------|
+| Layer    | Technology                                                            |
+| -------- | --------------------------------------------------------------------- |
 | Frontend | SvelteKit (static SPA via `adapter-static`), Svelte 5 runes, Pico CSS |
-| API | Hono on Cloudflare Workers (via Pages Functions) |
-| Database | Cloudflare D1 (SQLite) with Drizzle ORM |
-| Auth | Magic links via Resend, JWT (HS256, Web Crypto API) |
-| Build | Vite, Bun |
-| CI/CD | GitHub Actions → Cloudflare Pages |
+| API      | Hono on Cloudflare Workers (via Pages Functions)                      |
+| Database | Cloudflare D1 (SQLite) with Drizzle ORM                               |
+| Auth     | Magic links via Resend, JWT (HS256, Web Crypto API)                   |
+| Build    | Vite, Bun                                                             |
+| CI/CD    | GitHub Actions → Cloudflare Pages                                     |
 
 ## Project structure
 
@@ -88,16 +88,16 @@ JWT_SECRET=some-local-secret
 
 ## Scripts
 
-| Command | What it does |
-|---------|-------------|
-| `bun run dev` | Start SvelteKit + Wrangler concurrently |
-| `bun run build` | Build static SPA to `build/` |
-| `bun run test` | Run all tests (Vitest) |
-| `bun run test:watch` | Run tests in watch mode |
-| `bun run lint` | Lint with oxlint |
-| `bun run check` | Svelte type checking |
+| Command               | What it does                              |
+| --------------------- | ----------------------------------------- |
+| `bun run dev`         | Start SvelteKit + Wrangler concurrently   |
+| `bun run build`       | Build static SPA to `build/`              |
+| `bun run test`        | Run all tests (Vitest)                    |
+| `bun run test:watch`  | Run tests in watch mode                   |
+| `bun run lint`        | Lint with oxlint                          |
+| `bun run check`       | Svelte type checking                      |
 | `bun run db:generate` | Generate D1 migration from schema changes |
-| `bun run db:migrate` | Apply migrations to local D1 |
+| `bun run db:migrate`  | Apply migrations to local D1              |
 
 ## Testing
 
@@ -150,19 +150,19 @@ The app deploys to Cloudflare Pages via GitHub Actions. The workflow (`.github/w
 
 ### Required GitHub secrets
 
-| Secret | Description |
-|--------|-------------|
-| `CLOUDFLARE_API_TOKEN` | Cloudflare API token with Pages + D1 permissions |
-| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID |
+| Secret                  | Description                                      |
+| ----------------------- | ------------------------------------------------ |
+| `CLOUDFLARE_API_TOKEN`  | Cloudflare API token with Pages + D1 permissions |
+| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID                       |
 
 ### Required Cloudflare secrets
 
 Set these in the Cloudflare dashboard (Workers & Pages → your project → Settings → Environment variables):
 
-| Secret | Description |
-|--------|-------------|
+| Secret           | Description                                  |
+| ---------------- | -------------------------------------------- |
 | `RESEND_API_KEY` | Resend API key for sending magic link emails |
-| `JWT_SECRET` | Secret key for signing JWTs |
+| `JWT_SECRET`     | Secret key for signing JWTs                  |
 
 ### First deployment
 

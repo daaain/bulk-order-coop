@@ -82,10 +82,10 @@ bunx wrangler d1 migrations apply DB --remote
 
 In the Cloudflare dashboard (Workers & Pages → bulk-order-coop → Settings → Environment variables), add:
 
-| Secret | Description |
-|--------|-------------|
-| `RESEND_API_KEY` | Resend API key for sending magic link emails |
-| `JWT_SECRET` | Secret key for signing JWTs (generate with `openssl rand -base64 32`) |
+| Secret           | Description                                                           |
+| ---------------- | --------------------------------------------------------------------- |
+| `RESEND_API_KEY` | Resend API key for sending magic link emails                          |
+| `JWT_SECRET`     | Secret key for signing JWTs (generate with `openssl rand -base64 32`) |
 
 ### 5. Deploy
 

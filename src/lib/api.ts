@@ -1,7 +1,10 @@
 const API_BASE = '/api';
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
     super(message);
   }
 }
@@ -10,7 +13,7 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
   const url = `${API_BASE}${path}`;
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
-    ...options?.headers
+    ...options?.headers,
   };
 
   const token = localStorage.getItem('auth_token');

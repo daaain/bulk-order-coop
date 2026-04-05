@@ -4,8 +4,27 @@
 	import { parseCatalogueCsv } from '$shared/csv';
 	import { storeCatalogue } from '$lib/catalogue-db';
 
-	let name = $state('');
-	let deadline = $state('');
+	const dateFormatter = new Intl.DateTimeFormat('en-US', {
+		month: 'long',
+		year: 'numeric'
+	});
+	const now = new Date();
+	let name = $state(`${dateFormatter.format(now)} Order`);
+
+	function nextWednesdaySecondWeek(): string {
+		const d = new Date(now);
+		// Move to next Wednesday (day 3)
+		const daysUntilWed = (3 - d.getDay() + 7) % 7 || 7;
+		d.setDate(d.getDate() + daysUntilWed + 7); // +7 for second week
+		return d.toISOString().slice(0, 10);
+	}
+
+	let deadline = $state(nextWednesdaySecondWeek());
+
+	const dayOfWeekFormatter = new Intl.DateTimeFormat('en-GB', { weekday: 'long' });
+	let deadlineDayOfWeek = $derived(
+		deadline ? dayOfWeekFormatter.format(new Date(deadline + 'T00:00:00')) : ''
+	);
 	let file = $state<File | null>(null);
 	let loading = $state(false);
 	let error = $state('');
@@ -109,6 +128,7 @@
 		<label>
 			Deadline (optional)
 			<input type="date" bind:value={deadline} disabled={loading} />
+			{#if deadlineDayOfWeek}<small>{deadlineDayOfWeek}</small>{/if}
 		</label>
 
 		<label>

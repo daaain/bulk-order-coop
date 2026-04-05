@@ -20,199 +20,191 @@ const TEST_CSV = `Product code,order column 1,concatprodsize as text,organic,pro
 
 /** Product snapshots matching the TEST_CSV data, keyed by productCode */
 export const TEST_ITEMS: Record<string, Record<string, unknown>> = {
-	'1001': {
-		productCode: '1001',
-		description: 'Arborio Rice - white - Italy',
-		brand: 'Infinity Foods',
-		organic: true,
-		casePrice: 15.55,
-		vatRate: 0,
-		vatPerCase: 0,
-		unitsPerCase: 6,
-		packSize: 500,
-		unit: 'g',
-		rrp: 3.46,
-		barcode: '5028869010010'
-	},
-	'1002': {
-		productCode: '1002',
-		description: 'Black Rice - Italy',
-		brand: 'Infinity Foods',
-		organic: true,
-		casePrice: 15.70,
-		vatRate: 0,
-		vatPerCase: 0,
-		unitsPerCase: 6,
-		packSize: 500,
-		unit: 'g',
-		rrp: 3.49,
-		barcode: '5028869010027'
-	},
-	'1003': {
-		productCode: '1003',
-		description: 'Amaranth Seed',
-		brand: 'Infinity Foods',
-		organic: true,
-		casePrice: 12.30,
-		vatRate: 0,
-		vatPerCase: 0,
-		unitsPerCase: 6,
-		packSize: 500,
-		unit: 'g',
-		rrp: 2.73,
-		barcode: '5028869010034'
-	},
-	'1005': {
-		productCode: '1005',
-		description: 'Brown Rice Short Grain - Italy',
-		brand: 'Infinity Foods',
-		organic: true,
-		casePrice: 9.40,
-		vatRate: 0,
-		vatPerCase: 0,
-		unitsPerCase: 6,
-		packSize: 500,
-		unit: 'g',
-		rrp: 2.09,
-		barcode: '5028869010058'
-	},
-	'2050': {
-		productCode: '2050',
-		description: 'Chopped Tomatoes',
-		brand: 'Biona',
-		organic: false,
-		casePrice: 6.45,
-		vatRate: 2,
-		vatPerCase: 1.29,
-		unitsPerCase: 6,
-		packSize: 400,
-		unit: 'g',
-		rrp: 1.29,
-		barcode: '5028869020503'
-	}
+  '1001': {
+    productCode: '1001',
+    description: 'Arborio Rice - white - Italy',
+    brand: 'Infinity Foods',
+    organic: true,
+    casePrice: 15.55,
+    vatRate: 0,
+    vatPerCase: 0,
+    unitsPerCase: 6,
+    packSize: 500,
+    unit: 'g',
+    rrp: 3.46,
+    barcode: '5028869010010',
+  },
+  '1002': {
+    productCode: '1002',
+    description: 'Black Rice - Italy',
+    brand: 'Infinity Foods',
+    organic: true,
+    casePrice: 15.7,
+    vatRate: 0,
+    vatPerCase: 0,
+    unitsPerCase: 6,
+    packSize: 500,
+    unit: 'g',
+    rrp: 3.49,
+    barcode: '5028869010027',
+  },
+  '1003': {
+    productCode: '1003',
+    description: 'Amaranth Seed',
+    brand: 'Infinity Foods',
+    organic: true,
+    casePrice: 12.3,
+    vatRate: 0,
+    vatPerCase: 0,
+    unitsPerCase: 6,
+    packSize: 500,
+    unit: 'g',
+    rrp: 2.73,
+    barcode: '5028869010034',
+  },
+  '1005': {
+    productCode: '1005',
+    description: 'Brown Rice Short Grain - Italy',
+    brand: 'Infinity Foods',
+    organic: true,
+    casePrice: 9.4,
+    vatRate: 0,
+    vatPerCase: 0,
+    unitsPerCase: 6,
+    packSize: 500,
+    unit: 'g',
+    rrp: 2.09,
+    barcode: '5028869010058',
+  },
+  '2050': {
+    productCode: '2050',
+    description: 'Chopped Tomatoes',
+    brand: 'Biona',
+    organic: false,
+    casePrice: 6.45,
+    vatRate: 2,
+    vatPerCase: 1.29,
+    unitsPerCase: 6,
+    packSize: 400,
+    unit: 'g',
+    rrp: 1.29,
+    barcode: '5028869020503',
+  },
 };
 
 export async function setupMiniflare() {
-	mf = new Miniflare({
-		modules: true,
-		d1Databases: ['DB'],
-		kvNamespaces: ['CATALOGUE_KV'],
-		script: 'export default { fetch() { return new Response("") } }'
-	});
-	db = await mf.getD1Database('DB') as unknown as D1Database;
-	kv = await mf.getKVNamespace('CATALOGUE_KV') as unknown as KVNamespace;
+  mf = new Miniflare({
+    modules: true,
+    d1Databases: ['DB'],
+    kvNamespaces: ['CATALOGUE_KV'],
+    script: 'export default { fetch() { return new Response("") } }',
+  });
+  db = (await mf.getD1Database('DB')) as unknown as D1Database;
+  kv = (await mf.getKVNamespace('CATALOGUE_KV')) as unknown as KVNamespace;
 
-	const migrationPath = resolve(process.cwd(), 'db/migrations/0000_famous_pete_wisdom.sql');
-	const raw = readFileSync(migrationPath, 'utf-8');
-	const statements = raw
-		.split('--> statement-breakpoint')
-		.map((s) => s.trim())
-		.filter(Boolean);
-	for (const stmt of statements) {
-		const oneLine = stmt.replace(/\n/g, ' ').replace(/\t/g, ' ');
-		await db.exec(oneLine);
-	}
+  const migrationPath = resolve(process.cwd(), 'db/migrations/0000_famous_pete_wisdom.sql');
+  const raw = readFileSync(migrationPath, 'utf-8');
+  const statements = raw
+    .split('--> statement-breakpoint')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const stmt of statements) {
+    const oneLine = stmt.replace(/\n/g, ' ').replace(/\t/g, ' ');
+    await db.exec(oneLine);
+  }
 }
 
 export async function teardownMiniflare() {
-	await mf?.dispose();
+  await mf?.dispose();
 }
 
 // Tables in reverse dependency order for clean deletes
 const TABLES = [
-	'allocations',
-	'delivery_items',
-	'claims',
-	'order_items',
-	'order_members',
-	'orders',
-	'auth_tokens',
-	'members'
+  'allocations',
+  'delivery_items',
+  'claims',
+  'order_items',
+  'order_members',
+  'orders',
+  'auth_tokens',
+  'members',
 ];
 
 export async function resetDatabase() {
-	for (const table of TABLES) {
-		await db.exec(`DELETE FROM ${table}`);
-	}
+  for (const table of TABLES) {
+    await db.exec(`DELETE FROM ${table}`);
+  }
 
-	// Clear KV namespace
-	const listed = await kv.list();
-	for (const key of listed.keys) {
-		await kv.delete(key.name);
-	}
+  // Clear KV namespace
+  const listed = await kv.list();
+  for (const key of listed.keys) {
+    await kv.delete(key.name);
+  }
 }
 
 export async function appFetch(path: string, init?: RequestInit): Promise<Response> {
-	const bindings = {
-		DB: db,
-		CATALOGUE_KV: kv,
-		JWT_SECRET,
-		RESEND_API_KEY: 're_xxx'
-	} as unknown as Bindings;
+  const bindings = {
+    DB: db,
+    CATALOGUE_KV: kv,
+    JWT_SECRET,
+    RESEND_API_KEY: 're_xxx',
+  } as unknown as Bindings;
 
-	return app.fetch(
-		new Request(`http://localhost/api${path}`, init),
-		bindings
-	);
+  return app.fetch(new Request(`http://localhost/api${path}`, init), bindings);
 }
 
 export async function authFetch(
-	path: string,
-	memberId: string,
-	email: string,
-	init?: RequestInit
+  path: string,
+  memberId: string,
+  email: string,
+  init?: RequestInit,
 ): Promise<Response> {
-	const jwt = await signJwt({ sub: memberId, email }, JWT_SECRET);
-	const headers = new Headers(init?.headers);
-	headers.set('Authorization', `Bearer ${jwt}`);
-	return appFetch(path, { ...init, headers });
+  const jwt = await signJwt({ sub: memberId, email }, JWT_SECRET);
+  const headers = new Headers(init?.headers);
+  headers.set('Authorization', `Bearer ${jwt}`);
+  return appFetch(path, { ...init, headers });
 }
 
 export async function seedMember(
-	email: string,
-	name?: string,
-	initials?: string
+  email: string,
+  name?: string,
+  initials?: string,
 ): Promise<{ id: string; jwt: string }> {
-	const id = `m_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-	const now = Math.floor(Date.now() / 1000);
-	await db
-		.prepare('INSERT INTO members (id, email, name, initials, created_at) VALUES (?, ?, ?, ?, ?)')
-		.bind(id, email, name ?? null, initials ?? null, now)
-		.run();
-	const jwt = await signJwt({ sub: id, email }, JWT_SECRET);
-	return { id, jwt };
+  const id = `m_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const now = Math.floor(Date.now() / 1000);
+  await db
+    .prepare('INSERT INTO members (id, email, name, initials, created_at) VALUES (?, ?, ?, ?, ?)')
+    .bind(id, email, name ?? null, initials ?? null, now)
+    .run();
+  const jwt = await signJwt({ sub: id, email }, JWT_SECRET);
+  return { id, jwt };
 }
 
 export async function seedCatalogue(): Promise<{ catalogueKey: string }> {
-	const key = `test-${Date.now()}.csv`;
-	await kv.put(key, TEST_CSV);
-	return { catalogueKey: key };
+  const key = `test-${Date.now()}.csv`;
+  await kv.put(key, TEST_CSV);
+  return { catalogueKey: key };
 }
 
 /** Add an order item with a full product snapshot via the API */
 export async function seedOrderItem(
-	orderId: string,
-	memberId: string,
-	email: string,
-	productCode: string
+  orderId: string,
+  memberId: string,
+  email: string,
+  productCode: string,
 ): Promise<{ id: string }> {
-	const snapshot = TEST_ITEMS[productCode];
-	if (!snapshot) throw new Error(`No test item for product code: ${productCode}`);
+  const snapshot = TEST_ITEMS[productCode];
+  if (!snapshot) throw new Error(`No test item for product code: ${productCode}`);
 
-	const res = await authFetch(
-		`/orders/${orderId}/items`,
-		memberId,
-		email,
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(snapshot)
-		}
-	);
-	const body = await res.json() as { id: string };
-	return { id: body.id };
+  const res = await authFetch(`/orders/${orderId}/items`, memberId, email, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(snapshot),
+  });
+  const body = (await res.json()) as { id: string };
+  return { id: body.id };
 }
 
 export function getDb(): D1Database {
-	return db;
+  return db;
 }

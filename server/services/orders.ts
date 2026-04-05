@@ -3,100 +3,100 @@ import { nanoid } from 'nanoid';
 const VALID_STATUSES = ['open', 'closed', 'reconciling', 'complete'] as const;
 
 const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
-	open: ['closed'],
-	closed: ['reconciling'],
-	reconciling: ['complete']
+  open: ['closed'],
+  closed: ['reconciling'],
+  reconciling: ['complete'],
 };
 
 export function validateCreateOrder(
-	body: unknown
+  body: unknown,
 ): { name: string; catalogueKey: string; deadline?: number } | { error: string } {
-	if (!body || typeof body !== 'object') {
-		return { error: 'Request body must be an object' };
-	}
+  if (!body || typeof body !== 'object') {
+    return { error: 'Request body must be an object' };
+  }
 
-	const { name, catalogueKey, deadline } = body as Record<string, unknown>;
+  const { name, catalogueKey, deadline } = body as Record<string, unknown>;
 
-	if (typeof name !== 'string' || name.trim() === '') {
-		return { error: 'name is required and must be a non-empty string' };
-	}
+  if (typeof name !== 'string' || name.trim() === '') {
+    return { error: 'name is required and must be a non-empty string' };
+  }
 
-	if (typeof catalogueKey !== 'string' || catalogueKey.trim() === '') {
-		return { error: 'catalogueKey is required and must be a non-empty string' };
-	}
+  if (typeof catalogueKey !== 'string' || catalogueKey.trim() === '') {
+    return { error: 'catalogueKey is required and must be a non-empty string' };
+  }
 
-	const result: { name: string; catalogueKey: string; deadline?: number } = {
-		name: name.trim(),
-		catalogueKey: catalogueKey.trim()
-	};
+  const result: { name: string; catalogueKey: string; deadline?: number } = {
+    name: name.trim(),
+    catalogueKey: catalogueKey.trim(),
+  };
 
-	if (deadline !== undefined) {
-		if (typeof deadline !== 'number') {
-			return { error: 'deadline must be a number (Unix timestamp)' };
-		}
-		result.deadline = deadline;
-	}
+  if (deadline !== undefined) {
+    if (typeof deadline !== 'number') {
+      return { error: 'deadline must be a number (Unix timestamp)' };
+    }
+    result.deadline = deadline;
+  }
 
-	return result;
+  return result;
 }
 
 export function validateUpdateOrder(
-	body: unknown
+  body: unknown,
 ): { name?: string; deadline?: number | null; status?: string } | { error: string } {
-	if (!body || typeof body !== 'object') {
-		return { error: 'Request body must be an object' };
-	}
+  if (!body || typeof body !== 'object') {
+    return { error: 'Request body must be an object' };
+  }
 
-	const { name, deadline, status } = body as Record<string, unknown>;
+  const { name, deadline, status } = body as Record<string, unknown>;
 
-	const result: { name?: string; deadline?: number | null; status?: string } = {};
+  const result: { name?: string; deadline?: number | null; status?: string } = {};
 
-	if (name !== undefined) {
-		if (typeof name !== 'string' || name.trim() === '') {
-			return { error: 'name must be a non-empty string' };
-		}
-		result.name = name.trim();
-	}
+  if (name !== undefined) {
+    if (typeof name !== 'string' || name.trim() === '') {
+      return { error: 'name must be a non-empty string' };
+    }
+    result.name = name.trim();
+  }
 
-	if (deadline !== undefined) {
-		if (deadline !== null && typeof deadline !== 'number') {
-			return { error: 'deadline must be a number or null' };
-		}
-		result.deadline = deadline as number | null;
-	}
+  if (deadline !== undefined) {
+    if (deadline !== null && typeof deadline !== 'number') {
+      return { error: 'deadline must be a number or null' };
+    }
+    result.deadline = deadline as number | null;
+  }
 
-	if (status !== undefined) {
-		if (typeof status !== 'string' || !(VALID_STATUSES as readonly string[]).includes(status)) {
-			return { error: `status must be one of: ${VALID_STATUSES.join(', ')}` };
-		}
-		result.status = status;
-	}
+  if (status !== undefined) {
+    if (typeof status !== 'string' || !(VALID_STATUSES as readonly string[]).includes(status)) {
+      return { error: `status must be one of: ${VALID_STATUSES.join(', ')}` };
+    }
+    result.status = status;
+  }
 
-	if (Object.keys(result).length === 0) {
-		return { error: 'At least one field (name, deadline, status) is required' };
-	}
+  if (Object.keys(result).length === 0) {
+    return { error: 'At least one field (name, deadline, status) is required' };
+  }
 
-	return result;
+  return result;
 }
 
 export function validateJoinOrder(body: unknown): { inviteCode: string } | { error: string } {
-	if (!body || typeof body !== 'object') {
-		return { error: 'Request body must be an object' };
-	}
+  if (!body || typeof body !== 'object') {
+    return { error: 'Request body must be an object' };
+  }
 
-	const { inviteCode } = body as Record<string, unknown>;
+  const { inviteCode } = body as Record<string, unknown>;
 
-	if (typeof inviteCode !== 'string' || inviteCode.trim() === '') {
-		return { error: 'inviteCode is required and must be a non-empty string' };
-	}
+  if (typeof inviteCode !== 'string' || inviteCode.trim() === '') {
+    return { error: 'inviteCode is required and must be a non-empty string' };
+  }
 
-	return { inviteCode: inviteCode.trim() };
+  return { inviteCode: inviteCode.trim() };
 }
 
 export function isValidStatusTransition(from: string, to: string): boolean {
-	return VALID_STATUS_TRANSITIONS[from]?.includes(to) ?? false;
+  return VALID_STATUS_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
 export function generateInviteCode(): string {
-	return nanoid(10);
+  return nanoid(10);
 }
