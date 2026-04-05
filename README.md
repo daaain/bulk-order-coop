@@ -32,6 +32,7 @@ The order totals page shows exactly what each member owes, broken down by net, V
 
 ## Features
 
+- Works on mobile
 - Passwordless sign-in via magic links
 - CSV catalogue upload with automatic parsing
 - Real-time case rounding indicators
@@ -40,14 +41,18 @@ The order totals page shows exactly what each member owes, broken down by net, V
 - Fair proportional allocation when deliveries differ from orders
 - Per-member cost breakdowns with VAT
 - Inline confirmation for destructive actions
-- Works on mobile
+- PDF invoice upload for reconciliation
+
+## Limitations
+
+- Only one catalogue can be active at the moment for simplicity, so if you create a new order before finishing a previous one, the previous catalogue will be overwritten and the search will add values from the new catalogue to the order
 
 ## Self-hosting
 
 The app runs on Cloudflare Pages + Workers + D1 (SQLite) + KV. You'll need:
 
 - A [Cloudflare](https://cloudflare.com) account (free tier works)
-- A [Resend](https://resend.com) account for sending magic link emails
+- A [Resend](https://resend.com) account for sending magic link emails, with custom domain set up
 - [Bun](https://bun.sh) installed locally for building
 
 ### 1. Install dependencies and build
@@ -80,11 +85,12 @@ bunx wrangler d1 migrations apply DB --remote
 
 ### 4. Set secrets
 
-In the Cloudflare dashboard (Workers & Pages → bulk-order-coop → Settings → Environment variables), add:
+In the Cloudflare dashboard (Workers & Pages → bulk-order-coop → Settings → Variables and Secrets), add:
 
 | Secret           | Description                                                           |
 | ---------------- | --------------------------------------------------------------------- |
 | `RESEND_API_KEY` | Resend API key for sending magic link emails                          |
+| `EMAIL_FROM`     | Email from field such as "Bulk Order Co-op <noreply@your-domain.com>" |
 | `JWT_SECRET`     | Secret key for signing JWTs (generate with `openssl rand -base64 32`) |
 
 ### 5. Deploy
