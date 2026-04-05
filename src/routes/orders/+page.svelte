@@ -18,16 +18,16 @@
 	<title>My Orders — Bulk Order Co-op</title>
 </svelte:head>
 
-<h1>My Orders</h1>
+<h1 class="animate-in">My Orders</h1>
 
-<div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem;">
+<div class="flex flex-wrap items-end gap-4 mb-8">
   <a href="/orders/new" role="button">Create new order</a>
-  <form onsubmit={handleJoin} style="display: flex; gap: 0.5rem; align-items: flex-end;">
+  <form onsubmit={handleJoin} class="flex items-end gap-2">
     <input
+      class="invite-input"
       type="text"
       bind:value={inviteCode}
       placeholder="Enter invite code"
-      style="margin-bottom: 0;"
     />
     <button type="submit">Join</button>
   </form>
@@ -44,3 +44,9 @@
     {/each}
   </div>
 {/if}
+
+<style>
+  .invite-input {
+    margin-bottom: 0;
+  }
+</style>

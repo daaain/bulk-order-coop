@@ -20,42 +20,53 @@
 			goto('/');
 		}
 	});
+
 </script>
 
 <svelte:head>
 	<title>Bulk Order Co-op</title>
 </svelte:head>
 
-<header class="container">
-	<nav>
-		<ul>
-			<li><a href="/"><strong>Bulk Order Co-op</strong></a></li>
-		</ul>
-		<ul>
-			{#if auth.isAuthenticated}
-				<li><a href="/orders">Orders</a></li>
-				<li>
-					<small>{auth.user?.initials ?? auth.user?.email}</small>
-				</li>
-				<li>
-					<a
-						href="/"
-						onclick={(e) => {
-							e.preventDefault();
-							auth.logout();
-							goto('/');
-						}}>Sign out</a
-					>
-				</li>
-			{/if}
-		</ul>
-	</nav>
+<header class="site-header">
+	<div class="container">
+		<a href="/" class="site-logo">
+			<span class="logo-leaf" aria-hidden="true">&#x1F33F;</span>
+			<span>Bulk Order Co-op</span>
+		</a>
+
+		<nav>
+			<ul class="nav-links">
+				{#if auth.isAuthenticated}
+					<li><a href="/orders">Orders</a></li>
+					<li>
+						<span class="nav-user">
+							<span class="nav-avatar">{auth.user?.initials ?? '?'}</span>
+						</span>
+					</li>
+					<li>
+						<a
+							href="/"
+							onclick={(e) => {
+								e.preventDefault();
+								auth.logout();
+								goto('/');
+							}}>Sign out</a
+						>
+					</li>
+				{/if}
+			</ul>
+		</nav>
+	</div>
 </header>
 
-<main class="container">
-	{@render children()}
+<main class="site-main">
+	<div class="container">
+		{@render children()}
+	</div>
 </main>
 
-<footer class="container">
-	<small>Bulk Order Co-op</small>
+<footer class="site-footer">
+	<div class="container">
+		<small>Bulk Order Co-op &middot; Coordinating community food orders</small>
+	</div>
 </footer>

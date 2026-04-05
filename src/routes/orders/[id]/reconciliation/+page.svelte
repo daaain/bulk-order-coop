@@ -58,10 +58,10 @@
 	];
 
 	const statusColours: Record<DeliveryStatus, string> = {
-		arrived: '#d4edda',
-		missing: '#f8d7da',
-		partial: '#fff3cd',
-		different_price: '#fff3cd'
+		arrived: 'var(--delivery-arrived-bg)',
+		missing: 'var(--delivery-missing-bg)',
+		partial: 'var(--delivery-partial-bg)',
+		different_price: 'var(--delivery-partial-bg)'
 	};
 
 	let debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -208,7 +208,7 @@
 	<title>Reconciliation — {data.order.name}</title>
 </svelte:head>
 
-<h1>Reconciliation</h1>
+<h1 class="animate-in">Reconciliation</h1>
 
 {#if !canView}
 	<section>
@@ -227,7 +227,7 @@
 		</hgroup>
 
 		{#if !isReadOnly}
-			<div style="margin-bottom: 1rem;">
+			<div class="action-bar">
 				<button
 					class="outline"
 					onclick={markAllArrived}
@@ -266,7 +266,7 @@
 									<select
 										value={item.delivery?.status ?? ''}
 										onchange={(e) => setDeliveryStatus(item, (e.target as HTMLSelectElement).value as DeliveryStatus)}
-										style="margin-bottom: 0; min-width: 8rem;"
+										class="table-input table-input--wide"
 									>
 										<option value="" disabled>Select...</option>
 										{#each deliveryStatuses as ds (ds.value)}
@@ -286,7 +286,7 @@
 											step="any"
 											bind:value={item.delivery.actualQuantity}
 											onchange={() => handleDeliveryChange(item.orderItem.id, item)}
-											style="margin-bottom: 0; width: 6rem;"
+											class="table-input table-input--narrow"
 										/>
 									{/if}
 								{:else}
@@ -304,7 +304,7 @@
 											step="0.01"
 											bind:value={item.delivery.actualPrice}
 											onchange={() => handleDeliveryChange(item.orderItem.id, item)}
-											style="margin-bottom: 0; width: 6rem;"
+											class="table-input table-input--narrow"
 										/>
 									{/if}
 								{:else}
@@ -325,7 +325,7 @@
 											}
 										}}
 										placeholder="Optional notes"
-										style="margin-bottom: 0; min-width: 8rem;"
+										class="table-input table-input--wide"
 									/>
 								{/if}
 							</td>
@@ -379,9 +379,7 @@
 						<strong>{summary.memberName ?? summary.memberInitials ?? 'Unknown'}</strong>
 						— {formatPrice(summary.totals.gross)}
 						{#if summary.allConfirmed}
-							<mark style="background: #2ecc40; color: white; padding: 0.1em 0.4em; border-radius: 4px; margin-left: 0.5rem;">
-								Confirmed
-							</mark>
+							<mark class="badge-open" style="margin-left: 0.5rem;">Confirmed</mark>
 						{/if}
 					</summary>
 
@@ -406,7 +404,7 @@
 										<td>
 											{alloc.allocated}
 											{#if alloc.allocated !== alloc.claimed}
-												<small style="color: var(--pico-del-color);">
+												<small style="color: var(--color-terracotta);">
 													({alloc.allocated > alloc.claimed ? '+' : ''}{(alloc.allocated - alloc.claimed).toFixed(1)})
 												</small>
 											{/if}
@@ -422,10 +420,9 @@
 												{@const allocation = reconItem?.allocations.find((a) => a.memberId === summary.memberId)}
 												{#if allocation}
 													<button
-														class="outline"
+														class="outline confirm-btn"
 														onclick={() => handleConfirm(allocation.id)}
 														disabled={confirming}
-														style="padding: 0.2em 0.6em; font-size: 0.85em;"
 													>
 														Confirm
 													</button>
@@ -485,9 +482,7 @@
 								<td>{formatPrice(summary.totals.gross)}</td>
 								<td>
 									{#if summary.allConfirmed}
-										<mark style="background: #2ecc40; color: white; padding: 0.1em 0.4em; border-radius: 4px;">
-											Confirmed
-										</mark>
+										<mark class="badge-open">Confirmed</mark>
 									{:else}
 										Pending
 									{/if}
@@ -519,3 +514,26 @@
 		{/if}
 	{/if}
 {/if}
+
+<style>
+	.action-bar {
+		margin-bottom: 1rem;
+	}
+
+	.table-input {
+		margin-bottom: 0;
+	}
+
+	.table-input--wide {
+		min-width: 8rem;
+	}
+
+	.table-input--narrow {
+		width: 6rem;
+	}
+
+	.confirm-btn {
+		padding: 0.2em 0.6em;
+		font-size: 0.85em;
+	}
+</style>

@@ -19,10 +19,10 @@
 	};
 
 	const statusColours: Record<string, string> = {
-		ready: '#2ecc40',
-		nearly: '#ff851b',
-		needs_more: '#ff4136',
-		over: '#0074d9'
+		ready: 'var(--rounding-ready)',
+		nearly: 'var(--rounding-nearly)',
+		needs_more: 'var(--rounding-needs-more)',
+		over: 'var(--rounding-over)'
 	};
 
 	let fillPercent = $derived(
@@ -31,16 +31,16 @@
 			: 0
 	);
 
-	let colour = $derived(statusColours[rounding.status] ?? '#aaa');
+	let colour = $derived(statusColours[rounding.status] ?? 'var(--text-muted)');
 
 	function toPackDisplay(amount: number): number {
 		return packSize && packSize > 0 ? Math.round(amount / packSize) : amount;
 	}
 </script>
 
-<div class="rounding-bar">
-	<progress value={fillPercent} max="100" style="--pico-progress-color: {colour};"></progress>
-	<small style="color: {colour};">
+<div class="rounding-bar" style="--bar-colour: {colour};">
+	<progress value={fillPercent} max="100"></progress>
+	<small>
 		{statusLabels[rounding.status]}
 		{#if rounding.gap > 0 && rounding.status !== 'ready'}
 			— need {isPackaged ? `${toPackDisplay(rounding.gap)} more pack${toPackDisplay(rounding.gap) !== 1 ? 's' : ''}` : `${rounding.gap} more`}
@@ -54,3 +54,26 @@
 		({rounding.casesNeeded} case{rounding.casesNeeded !== 1 ? 's' : ''})
 	</small>
 </div>
+
+<style>
+	.rounding-bar {
+		margin-top: var(--space-3);
+		margin-bottom: var(--space-3);
+	}
+
+	.rounding-bar progress {
+		accent-color: var(--bar-colour);
+	}
+
+	.rounding-bar progress::-webkit-progress-value {
+		background-color: var(--bar-colour);
+	}
+
+	.rounding-bar progress::-moz-progress-bar {
+		background-color: var(--bar-colour);
+	}
+
+	.rounding-bar small {
+		color: var(--bar-colour);
+	}
+</style>

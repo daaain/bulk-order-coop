@@ -105,7 +105,7 @@
 	<title>Catalogue — {data.order.name}</title>
 </svelte:head>
 
-<h1>Catalogue</h1>
+<h1 class="animate-in">Catalogue</h1>
 
 <SearchFilter
 	bind:query={searchQuery}

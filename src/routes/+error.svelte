@@ -6,12 +6,12 @@
 	<title>Error — Bulk Order Co-op</title>
 </svelte:head>
 
-<hgroup>
-	<h1>{$page.status}</h1>
+<div class="text-center animate-in">
+	<h1 class="display-font" style="font-size: 6rem; line-height: 1;">{$page.status}</h1>
 	<p>{$page.error?.message ?? 'Something went wrong'}</p>
-</hgroup>
 
-<div role="group">
-	<a href="/" role="button">Return home</a>
-	<button class="outline" onclick={() => history.back()}>Go back</button>
+	<div role="group">
+		<a href="/" role="button">Return home</a>
+		<button class="outline" onclick={() => history.back()}>Go back</button>
+	</div>
 </div>

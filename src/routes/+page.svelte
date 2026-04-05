@@ -40,20 +40,23 @@
 	<title>Sign In — Bulk Order Co-op</title>
 </svelte:head>
 
-<hgroup>
-	<h1>Bulk Order Co-op</h1>
-	<p>Coordinate bulk food orders with your community</p>
-</hgroup>
+<div class="hero">
+	<hgroup>
+		<h1 class="animate-in">Bulk Order Co-op</h1>
+		<p class="animate-in stagger-1">Coordinate bulk food orders with your community</p>
+	</hgroup>
+</div>
 
 {#if sent}
-	<section>
+	<div class="auth-card animate-in stagger-2" style="text-align: center;">
+		<p style="font-size: 2.5rem; margin-bottom: 0.25rem;">&#x2709;&#xFE0F;</p>
 		<h2>Check your email</h2>
 		<p>We've sent a sign-in link to <strong>{email}</strong>.</p>
 		<p>Click the link in the email to sign in. It expires in 15 minutes.</p>
 		<button onclick={() => { sent = false; email = ''; }}>Send another link</button>
-	</section>
+	</div>
 {:else}
-	<section>
+	<div class="auth-card animate-in stagger-2">
 		<h2>Sign in</h2>
 		{#if error}
 			<p><mark>{error}</mark></p>
@@ -67,5 +70,5 @@
 				{sending ? 'Sending...' : 'Send magic link'}
 			</button>
 		</form>
-	</section>
+	</div>
 {/if}

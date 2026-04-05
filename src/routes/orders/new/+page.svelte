@@ -85,47 +85,49 @@
 	<title>New Order — Bulk Order Co-op</title>
 </svelte:head>
 
-<h1>Create New Order</h1>
+<div class="container-narrow">
+	<h1 class="animate-in">Create New Order</h1>
 
-{#if error}
-	<p><mark>{error}</mark></p>
-{/if}
+	{#if error}
+		<p><mark>{error}</mark></p>
+	{/if}
 
-<form onsubmit={handleSubmit}>
-	<label>
-		Order name
-		<input
-			type="text"
-			bind:value={name}
-			placeholder="e.g. January 2026 Order"
-			required
-			aria-invalid={nameInvalid ? true : undefined}
-			disabled={loading}
-		/>
-		{#if nameInvalid}<small>Please enter an order name.</small>{/if}
-	</label>
+	<form onsubmit={handleSubmit}>
+		<label>
+			Order name
+			<input
+				type="text"
+				bind:value={name}
+				placeholder="e.g. January 2026 Order"
+				required
+				aria-invalid={nameInvalid ? true : undefined}
+				disabled={loading}
+			/>
+			{#if nameInvalid}<small>Please enter an order name.</small>{/if}
+		</label>
 
-	<label>
-		Deadline (optional)
-		<input type="date" bind:value={deadline} disabled={loading} />
-	</label>
+		<label>
+			Deadline (optional)
+			<input type="date" bind:value={deadline} disabled={loading} />
+		</label>
 
-	<label>
-		Catalogue CSV
-		<input
-			type="file"
-			accept=".csv"
-			onchange={handleFileChange}
-			aria-invalid={fileInvalid ? true : undefined}
-			disabled={loading}
-		/>
-		{#if fileInvalid}<small>Please select a CSV file.</small>{/if}
-	</label>
+		<label>
+			Catalogue CSV
+			<input
+				type="file"
+				accept=".csv"
+				onchange={handleFileChange}
+				aria-invalid={fileInvalid ? true : undefined}
+				disabled={loading}
+			/>
+			{#if fileInvalid}<small>Please select a CSV file.</small>{/if}
+		</label>
 
-	<div role="group">
-		<button type="submit" aria-busy={loading} disabled={loading}>
-			{loading ? 'Creating...' : 'Create order'}
-		</button>
-		<a href="/orders" role="button" class="outline">Cancel</a>
-	</div>
-</form>
+		<div role="group">
+			<button type="submit" aria-busy={loading} disabled={loading}>
+				{loading ? 'Creating...' : 'Create order'}
+			</button>
+			<a href="/orders" role="button" class="outline">Cancel</a>
+		</div>
+	</form>
+</div>

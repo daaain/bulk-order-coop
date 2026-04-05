@@ -43,13 +43,15 @@
 	<title>Verify — Bulk Order Co-op</title>
 </svelte:head>
 
-<h1>Signing in</h1>
+<div class="auth-card animate-in">
+	<h1>Signing in</h1>
 
-{#if verifying}
-	<p aria-busy="true">Verifying your sign-in link...</p>
-{:else if error}
-	<section>
-		<p><mark>{error}</mark></p>
-		<a href="/" role="button">Back to sign in</a>
-	</section>
-{/if}
+	{#if verifying}
+		<p aria-busy="true">Verifying your sign-in link...</p>
+	{:else if error}
+		<section>
+			<p><mark>{error}</mark></p>
+			<a href="/" role="button">Back to sign in</a>
+		</section>
+	{/if}
+</div>

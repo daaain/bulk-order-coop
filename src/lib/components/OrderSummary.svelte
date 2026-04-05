@@ -10,13 +10,6 @@
     complete: 'Complete'
   };
 
-  const statusColours: Record<string, string> = {
-    open: 'background: #2ecc40; color: white;',
-    closed: 'background: #ff851b; color: white;',
-    reconciling: 'background: #0074d9; color: white;',
-    complete: 'background: #aaa; color: white;'
-  };
-
   const deadlineInfo = $derived.by(() => {
     if (!order.deadline) return null;
     const now = Date.now();
@@ -32,11 +25,11 @@
   const memberLabel = $derived(order.memberCount === 1 ? '1 member' : `${order.memberCount} members`);
 </script>
 
-<a href="/orders/{order.id}" style="text-decoration: none; color: inherit;">
+<a href="/orders/{order.id}" class="order-link">
   <article>
     <header>
       <strong>{order.name}</strong>
-      <mark style={statusColours[order.status]}>{statusLabels[order.status]}</mark>
+      <mark class="badge-{order.status}">{statusLabels[order.status]}</mark>
     </header>
     <p>{memberLabel}</p>
     {#if order.deadline}
@@ -45,3 +38,10 @@
     {/if}
   </article>
 </a>
+
+<style>
+  .order-link {
+    text-decoration: none;
+    color: inherit;
+  }
+</style>

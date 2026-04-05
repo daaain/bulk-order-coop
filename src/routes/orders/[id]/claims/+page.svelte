@@ -141,7 +141,7 @@
 	<title>Claims — {data.order.name}</title>
 </svelte:head>
 
-<h1>Claims</h1>
+<h1 class="animate-in">Claims</h1>
 
 {#if loading}
 	<p aria-busy="true">Loading claims...</p>

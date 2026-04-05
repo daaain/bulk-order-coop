@@ -94,10 +94,10 @@
 	<header>
 		<strong>{item.description}</strong>
 		{#if item.onOffer}
-			<mark style="background: #e74c3c; color: white;">On offer</mark>
+			<span class="badge-offer">On offer</span>
 		{/if}
 		{#if item.organic}
-			<mark>Organic</mark>
+			<span class="badge-organic">Organic</span>
 		{/if}
 		{#if !item.active}
 			<small><em>(inactive)</em></small>
@@ -115,7 +115,6 @@
 	</p>
 
 	{#if isOnOrder && orderItem}
-		<!-- Claims summary -->
 		{#if orderItem.claims.length > 0}
 			<p>
 				<small>

@@ -111,9 +111,7 @@
             <td>{member.initials ?? '–'}</td>
             <td>
               {#if member.role === 'organiser'}
-                <mark
-                  style="background: #0074d9; color: white; padding: 0.1em 0.4em; border-radius: 4px;"
-                >
+                <mark class="badge-organiser">
                   Organiser
                 </mark>
               {:else}
@@ -130,9 +128,9 @@
 
 <section>
   <h3>Invite link</h3>
-  <div style="display: flex; gap: 0.5rem; align-items: flex-end;">
-    <input type="text" value={inviteUrl} readonly style="margin-bottom: 0;" />
-    <button onclick={copyInviteLink} style="white-space: nowrap;">
+  <div class="flex items-end gap-2">
+    <input type="text" value={inviteUrl} readonly />
+    <button onclick={copyInviteLink}>
       {copied ? 'Copied!' : 'Copy link'}
     </button>
   </div>
@@ -142,7 +140,7 @@
   <section>
     <h3>Organiser controls</h3>
     {#if statusError}
-      <p style="color: var(--pico-del-color);">{statusError}</p>
+      <p style="color: var(--color-terracotta);">{statusError}</p>
     {/if}
     <ConfirmButton
       label={nextStatusLabel[nextStatus[data.order.status] ?? ''] ?? 'Advance status'}
@@ -152,3 +150,9 @@
     />
   </section>
 {/if}
+
+<style>
+  .flex input[readonly] {
+    margin-bottom: 0;
+  }
+</style>

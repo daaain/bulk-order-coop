@@ -71,21 +71,24 @@
 
 <style>
 	form {
-		margin-top: 0.5rem;
+		margin-top: var(--space-2);
 	}
 
 	fieldset {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.25rem 1rem;
-		margin-bottom: 0.5rem;
+		gap: var(--space-1) var(--space-4);
+		margin-bottom: var(--space-2);
 	}
 
 	fieldset label {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-1);
 		margin-bottom: 0;
 	}
 
 	fieldset legend {
-		margin-bottom: 0.25rem;
+		margin-bottom: var(--space-1);
 	}
 </style>

@@ -38,12 +38,12 @@
 </script>
 
 {#if confirming}
-	<span style="white-space: nowrap;">
+	<span class="confirm-prompt">
 		{confirmLabel}
-		<button class="outline {className}" {disabled} onclick={handleConfirm} style="padding: 0.2em 0.6em; font-size: 0.85em; margin-left: 0.25rem;">
+		<button class="ghost {className}" {disabled} onclick={handleConfirm}>
 			Yes
 		</button>
-		<button class="outline secondary" {disabled} onclick={handleCancel} style="padding: 0.2em 0.6em; font-size: 0.85em; margin-left: 0.25rem;">
+		<button class="ghost secondary" {disabled} onclick={handleCancel}>
 			Cancel
 		</button>
 	</span>
@@ -52,3 +52,15 @@
 		{label}
 	</button>
 {/if}
+
+<style>
+	.confirm-prompt {
+		white-space: nowrap;
+	}
+
+	.confirm-prompt button {
+		padding: var(--space-1) var(--space-2);
+		font-size: var(--text-sm);
+		margin-left: var(--space-1);
+	}
+</style>
