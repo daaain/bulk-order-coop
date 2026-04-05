@@ -4,9 +4,9 @@
 	"version": "0.0.1",
 	"type": "module",
 	"scripts": {
-		"dev": "concurrently --names svelte,worker \"vite dev\" \"wrangler pages dev build --port 8787\"",
-		"dev:svelte": "vite dev",
-		"dev:worker": "wrangler pages dev build --port 8787",
+		"dev": "concurrently --names app,api \"vite dev\" \"wrangler pages dev build --port 8787\"",
+		"dev:app": "vite dev",
+		"dev:api": "wrangler pages dev build --port 8787",
 		"build": "vite build",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
@@ -48,6 +48,7 @@
 		"drizzle-orm": "^0.45.1",
 		"hono": "^4.12.3",
 		"idb": "^8.0.3",
-		"nanoid": "^5.1.6"
+		"nanoid": "^5.1.6",
+		"pdfjs-dist": "^5.6.205"
 	}
 }
