@@ -30,7 +30,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'bun run build && bun run db:migrate && bun run e2e:serve',
+    command: 'bun run build && bun run e2e:migrate && bun run e2e:serve',
     port: 4173,
     reuseExistingServer: !process.env.CI,
   },

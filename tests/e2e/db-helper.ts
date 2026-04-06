@@ -15,7 +15,9 @@ const TABLES = [
 ];
 
 function findD1Database(): string {
-  const base = resolve('.wrangler/state/v3/d1/miniflare-D1DatabaseObject');
+  // E2E uses an isolated wrangler state dir (see `e2e:serve` in package.json)
+  // so manual dev data in `.wrangler/state` is never wiped by test setup.
+  const base = resolve('.wrangler/state-e2e/v3/d1/miniflare-D1DatabaseObject');
   if (!existsSync(base)) throw new Error(`D1 directory not found: ${base}`);
 
   const entries = readdirSync(base);
