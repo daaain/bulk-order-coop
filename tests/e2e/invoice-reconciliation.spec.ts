@@ -85,16 +85,14 @@ test.describe('Invoice-driven reconciliation', () => {
     // 8. Apply the invoice
     await page.click('button:has-text("Apply invoice")');
 
-    // After apply, all delivery rows should have a status set (no empty selects)
-    await page.waitForLoadState('networkidle');
+    // After apply, the table re-renders (loadReconciliation briefly swaps it out
+    // for a loading state). Use web-first assertions that auto-retry until the
+    // selects are both present and populated — don't rely on networkidle here.
     const selects = page.locator('select.table-input--wide');
-    await expect(selects.first()).toBeVisible({ timeout: 15000 });
-    const count = await selects.count();
-    expect(count).toBe(3);
-    for (let i = 0; i < count; i++) {
-      const value = await selects.nth(i).inputValue();
-      expect(value).not.toBe('');
-    }
+    await expect(selects).toHaveCount(3, { timeout: 15000 });
+    await expect(selects.first()).not.toHaveValue('', { timeout: 15000 });
+    await expect(selects.nth(1)).not.toHaveValue('');
+    await expect(selects.nth(2)).not.toHaveValue('');
 
     // 9. Generate allocations
     const allocateBtn = page.locator('button:has-text("Generate allocations")');
