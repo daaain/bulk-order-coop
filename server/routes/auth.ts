@@ -29,7 +29,10 @@ app.post('/magic-link', async (c) => {
     expiresAt,
   });
 
-  const baseUrl = new URL(c.req.url).origin;
+  // Prefer the browser's Origin header so dev links point at Vite (:5173)
+  // rather than the wrangler worker (:8787). Falls back to the request origin
+  // for non-browser callers (tests, curl, etc.).
+  const baseUrl = c.req.header('Origin') ?? new URL(c.req.url).origin;
   await sendMagicLink(c.env.RESEND_API_KEY, email, token, baseUrl, c.env.EMAIL_FROM);
 
   return c.json({ message: 'Magic link sent' });
