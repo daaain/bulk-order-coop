@@ -284,9 +284,7 @@ describe('Reconciliation API', () => {
     });
 
     it('rejects non-organiser', async () => {
-      const { orderId, member } = await setupReconcilingOrder({
-        secondMember: true,
-      });
+      const { orderId, member } = await setupReconcilingOrder({ secondMember: true });
 
       const res = await authFetch(`/orders/${orderId}/allocate`, member!.id, 'member@test.local', {
         method: 'POST',
@@ -324,9 +322,7 @@ describe('Reconciliation API', () => {
         'organiser@test.local',
       );
       const reconBody = (await reconRes.json()) as {
-        items: Array<{
-          allocations: Array<{ id: string; memberId: string; confirmed: boolean }>;
-        }>;
+        items: Array<{ allocations: Array<{ id: string; memberId: string; confirmed: boolean }> }>;
       };
       const allocation = reconBody.items[0].allocations.find((a) => a.memberId === organiser.id);
       expect(allocation).toBeDefined();

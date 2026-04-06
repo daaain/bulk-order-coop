@@ -14,20 +14,14 @@ export async function createOrder(data: {
   catalogueKey: string;
   deadline?: number;
 }): Promise<Order> {
-  return apiFetch<Order>('/orders', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
+  return apiFetch<Order>('/orders', { method: 'POST', body: JSON.stringify(data) });
 }
 
 export async function updateOrder(
   id: string,
   data: { name?: string; deadline?: number | null; status?: string },
 ): Promise<Order> {
-  return apiFetch<Order>(`/orders/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(data),
-  });
+  return apiFetch<Order>(`/orders/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 }
 
 export async function joinOrder(orderId: string, inviteCode: string): Promise<Order> {

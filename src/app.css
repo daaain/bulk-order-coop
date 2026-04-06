@@ -162,6 +162,8 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   scroll-behavior: smooth;
+  background-color: var(--bg);
+  transition: background-color var(--transition-base);
 }
 
 body {
@@ -965,9 +967,10 @@ details > :last-child {
 .tab-nav {
   display: flex;
   gap: var(--space-1);
-  border-bottom: 2px solid var(--border-subtle);
+  box-shadow: inset 0 -2px 0 var(--border-subtle);
   margin-bottom: var(--space-6);
   overflow-x: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -977,8 +980,6 @@ details > :last-child {
   color: var(--text-tertiary);
   padding: var(--space-2) var(--space-4);
   text-decoration: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
   white-space: nowrap;
   transition: all var(--transition-fast);
 }
@@ -991,7 +992,7 @@ details > :last-child {
 .tab-nav a.active,
 .tab-nav a[aria-current='page'] {
   color: var(--color-terracotta);
-  border-bottom-color: var(--color-terracotta);
+  box-shadow: inset 0 -2px 0 var(--color-terracotta);
 }
 
 /* --- Hero / Sign-in Page --- */

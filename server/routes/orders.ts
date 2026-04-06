@@ -55,12 +55,7 @@ app.post('/', async (c) => {
 
   await db.insert(orders).values(order);
 
-  await db.insert(orderMembers).values({
-    orderId: id,
-    memberId,
-    role: 'organiser',
-    joinedAt: now,
-  });
+  await db.insert(orderMembers).values({ orderId: id, memberId, role: 'organiser', joinedAt: now });
 
   return c.json(order, 201);
 });
@@ -118,12 +113,7 @@ app.get('/join/:code', async (c) => {
     .from(orderMembers)
     .where(eq(orderMembers.orderId, order.id));
 
-  return c.json({
-    id: order.id,
-    name: order.name,
-    status: order.status,
-    memberCount,
-  });
+  return c.json({ id: order.id, name: order.name, status: order.status, memberCount });
 });
 
 // GET /:id — Order details
@@ -262,12 +252,7 @@ app.post('/:id/join', async (c) => {
 
   const now = Math.floor(Date.now() / 1000);
 
-  await db.insert(orderMembers).values({
-    orderId,
-    memberId,
-    role: 'member',
-    joinedAt: now,
-  });
+  await db.insert(orderMembers).values({ orderId, memberId, role: 'member', joinedAt: now });
 
   return c.json(order);
 });

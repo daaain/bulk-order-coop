@@ -101,15 +101,17 @@ app.put('/:id/items/:itemId/delivery', async (c) => {
       })
       .where(eq(deliveryItems.orderItemId, itemId));
   } else {
-    await db.insert(deliveryItems).values({
-      orderItemId: itemId,
-      status: validated.status,
-      actualPrice: validated.actualPrice ?? null,
-      actualQuantity: validated.actualQuantity ?? null,
-      notes: validated.notes ?? null,
-      updatedBy: memberId,
-      updatedAt: now,
-    });
+    await db
+      .insert(deliveryItems)
+      .values({
+        orderItemId: itemId,
+        status: validated.status,
+        actualPrice: validated.actualPrice ?? null,
+        actualQuantity: validated.actualQuantity ?? null,
+        notes: validated.notes ?? null,
+        updatedBy: memberId,
+        updatedAt: now,
+      });
   }
 
   const [delivery] = await db
@@ -213,10 +215,7 @@ app.get('/:id/reconciliation', async (c) => {
   const allocationsByItem = new Map<string, AllocationWithMember[]>();
   for (const row of allocationRows) {
     const list = allocationsByItem.get(row.orderItemId) ?? [];
-    list.push({
-      ...row,
-      confirmed: Boolean(row.confirmed),
-    });
+    list.push({ ...row, confirmed: Boolean(row.confirmed) });
     allocationsByItem.set(row.orderItemId, list);
   }
 
@@ -521,10 +520,7 @@ app.put('/:id/allocations/:allocationId/confirm', async (c) => {
 
   await db.update(allocations).set({ confirmed: 1 }).where(eq(allocations.id, allocationId));
 
-  return c.json({
-    ...alloc,
-    confirmed: true,
-  });
+  return c.json({ ...alloc, confirmed: true });
 });
 
 // PUT /:id/confirm-all — Confirm all own allocations at once

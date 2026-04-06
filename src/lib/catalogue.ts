@@ -19,10 +19,7 @@ export async function loadCatalogue(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`/api/catalogues/${catalogueKey}`, {
-    headers,
-    cache: 'no-store',
-  });
+  const res = await fetch(`/api/catalogues/${catalogueKey}`, { headers, cache: 'no-store' });
 
   if (!res.ok) {
     throw new Error('Failed to load catalogue');
@@ -50,12 +47,7 @@ export function searchItems(items: ParsedCatalogueItem[], query: string): Parsed
 
 export function filterItems(
   items: ParsedCatalogueItem[],
-  filters: {
-    organic?: boolean;
-    onOffer?: boolean;
-    brand?: string;
-    activeOnly?: boolean;
-  },
+  filters: { organic?: boolean; onOffer?: boolean; brand?: string; activeOnly?: boolean },
 ): ParsedCatalogueItem[] {
   return items.filter((item) => {
     if (filters.organic && !item.organic) return false;

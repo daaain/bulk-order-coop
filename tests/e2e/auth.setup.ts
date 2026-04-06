@@ -8,10 +8,7 @@ setup('authenticate', async ({ page }) => {
   clearDatabase();
 
   // Login as the test user
-  await loginAs(page, 'e2e-user@test.local', {
-    name: 'E2E User',
-    initials: 'EU',
-  });
+  await loginAs(page, 'e2e-user@test.local', { name: 'E2E User', initials: 'EU' });
 
   // Verify we're on the orders page
   await expect(page).toHaveURL(/\/orders/);

@@ -21,9 +21,7 @@ export function removeItemFromOrder(
   orderId: string,
   itemId: string,
 ): Promise<{ success: boolean }> {
-  return apiFetch(`/orders/${orderId}/items/${itemId}`, {
-    method: 'DELETE',
-  });
+  return apiFetch(`/orders/${orderId}/items/${itemId}`, { method: 'DELETE' });
 }
 
 export function createClaim(
@@ -54,9 +52,7 @@ export function removeClaim(
   orderId: string,
   itemId: string,
 ): Promise<{ rounding: RoundingResult }> {
-  return apiFetch(`/orders/${orderId}/items/${itemId}/claims`, {
-    method: 'DELETE',
-  });
+  return apiFetch(`/orders/${orderId}/items/${itemId}/claims`, { method: 'DELETE' });
 }
 
 export function fetchMyClaims(

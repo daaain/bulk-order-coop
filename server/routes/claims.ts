@@ -163,11 +163,7 @@ app.put('/:id/items/:itemId/claims', async (c) => {
 
   await db
     .update(claims)
-    .set({
-      amount: validated.amount,
-      flexibility: validated.flexibility ?? null,
-      updatedAt: now,
-    })
+    .set({ amount: validated.amount, flexibility: validated.flexibility ?? null, updatedAt: now })
     .where(eq(claims.id, existing.id));
 
   const updatedClaim = {
@@ -329,10 +325,7 @@ app.get('/:id/claims/mine', async (c) => {
     };
   });
 
-  return c.json({
-    claims: result,
-    totals: { net: totalNet, vat: totalVat, gross: totalGross },
-  });
+  return c.json({ claims: result, totals: { net: totalNet, vat: totalVat, gross: totalGross } });
 });
 
 export default app;

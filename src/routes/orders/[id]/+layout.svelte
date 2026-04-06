@@ -27,7 +27,7 @@
 </script>
 
 <svelte:head>
-	<title>{data.order.name} — Bulk Order Co-op</title>
+  <title>{data.order.name} — Bulk Order Co-op</title>
 </svelte:head>
 
 <hgroup class="animate-in">

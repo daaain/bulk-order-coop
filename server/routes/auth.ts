@@ -22,12 +22,9 @@ app.post('/magic-link', async (c) => {
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = now + 15 * 60; // 15 minutes
 
-  await db.insert(authTokens).values({
-    id: nanoid(),
-    email: email.toLowerCase().trim(),
-    token,
-    expiresAt,
-  });
+  await db
+    .insert(authTokens)
+    .values({ id: nanoid(), email: email.toLowerCase().trim(), token, expiresAt });
 
   // Prefer the browser's Origin header so dev links point at Vite (:5173)
   // rather than the wrangler worker (:8787). Falls back to the request origin
@@ -78,11 +75,7 @@ app.get('/verify', async (c) => {
 
   if (!member) {
     const id = nanoid();
-    await db.insert(members).values({
-      id,
-      email,
-      createdAt: now,
-    });
+    await db.insert(members).values({ id, email, createdAt: now });
     member = { id, email, name: null, initials: null, createdAt: now };
   }
 
@@ -90,12 +83,7 @@ app.get('/verify', async (c) => {
 
   return c.json({
     token: jwt,
-    user: {
-      id: member.id,
-      email: member.email,
-      name: member.name,
-      initials: member.initials,
-    },
+    user: { id: member.id, email: member.email, name: member.name, initials: member.initials },
     isNewUser,
   });
 });
@@ -126,12 +114,7 @@ app.put('/profile', async (c) => {
   const [updated] = await db.select().from(members).where(eq(members.id, memberId)).limit(1);
 
   return c.json({
-    user: {
-      id: updated.id,
-      email: updated.email,
-      name: updated.name,
-      initials: updated.initials,
-    },
+    user: { id: updated.id, email: updated.email, name: updated.name, initials: updated.initials },
   });
 });
 

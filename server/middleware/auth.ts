@@ -5,13 +5,7 @@ import type { Bindings } from '../index';
 import { verifyJwt, type JwtPayload } from '../services/jwt';
 import { members } from '../../db/schema';
 
-type AuthEnv = {
-  Bindings: Bindings;
-  Variables: {
-    jwtPayload: JwtPayload;
-    memberId: string;
-  };
-};
+type AuthEnv = { Bindings: Bindings; Variables: { jwtPayload: JwtPayload; memberId: string } };
 
 export const requireAuth = createMiddleware<AuthEnv>(async (c, next) => {
   const authHeader = c.req.header('Authorization');

@@ -63,13 +63,7 @@ describe('matchInvoiceToOrder', () => {
 
   it('marks partially invoiced items as partial with actualQuantity in natural units', () => {
     const invoice = makeInvoice([
-      makeLine({
-        productCode: '210525',
-        ordered: 4,
-        invoiced: 2,
-        unitPrice: 46.65,
-        cost: 93.3,
-      }),
+      makeLine({ productCode: '210525', ordered: 4, invoiced: 2, unitPrice: 46.65, cost: 93.3 }),
     ]);
     const result = matchInvoiceToOrder(invoice, [oilOrderItem]);
     expect(result.matched).toHaveLength(1);

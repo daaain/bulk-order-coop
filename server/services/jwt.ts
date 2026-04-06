@@ -43,11 +43,7 @@ export async function signJwt(
   expiresInSeconds = 86400 * 7,
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  const fullPayload: JwtPayload = {
-    ...payload,
-    iat: now,
-    exp: now + expiresInSeconds,
-  };
+  const fullPayload: JwtPayload = { ...payload, iat: now, exp: now + expiresInSeconds };
 
   const header = base64UrlEncode(textEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
   const body = base64UrlEncode(textEncode(JSON.stringify(fullPayload)));

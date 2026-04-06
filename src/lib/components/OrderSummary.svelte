@@ -7,7 +7,7 @@
     open: 'Open',
     closed: 'Closed',
     reconciling: 'Reconciling',
-    complete: 'Complete'
+    complete: 'Complete',
   };
 
   const deadlineInfo = $derived.by(() => {
@@ -22,7 +22,9 @@
     return `Deadline passed ${Math.abs(diffDays)} days ago`;
   });
 
-  const memberLabel = $derived(order.memberCount === 1 ? '1 member' : `${order.memberCount} members`);
+  const memberLabel = $derived(
+    order.memberCount === 1 ? '1 member' : `${order.memberCount} members`,
+  );
 </script>
 
 <a href="/orders/{order.id}" class="order-link">
@@ -33,7 +35,9 @@
     </header>
     <p>{memberLabel}</p>
     {#if order.deadline}
-      <p>Deadline: {new Date(order.deadline * 1000).toLocaleDateString('en-GB')}</p>
+      <p>
+        Deadline: {new Date(order.deadline * 1000).toLocaleDateString('en-GB')}
+      </p>
       <p><small>{deadlineInfo}</small></p>
     {/if}
   </article>

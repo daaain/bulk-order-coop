@@ -9,10 +9,7 @@ interface CatalogueEntry {
 }
 
 interface CatalogueDB {
-  catalogues: {
-    key: string;
-    value: CatalogueEntry;
-  };
+  catalogues: { key: string; value: CatalogueEntry };
 }
 
 const MAX_CACHED_ORDERS = 3;

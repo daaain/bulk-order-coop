@@ -22,10 +22,7 @@ export function updateDeliveryStatus(
 }
 
 export function generateAllocations(orderId: string): Promise<{ count: number }> {
-  return apiFetch(`/orders/${orderId}/allocate`, {
-    method: 'POST',
-    body: JSON.stringify({}),
-  });
+  return apiFetch(`/orders/${orderId}/allocate`, { method: 'POST', body: JSON.stringify({}) });
 }
 
 export function confirmAllocation(orderId: string, allocationId: string): Promise<Allocation> {
@@ -36,8 +33,5 @@ export function confirmAllocation(orderId: string, allocationId: string): Promis
 }
 
 export function confirmAllMyAllocations(orderId: string): Promise<{ count: number }> {
-  return apiFetch(`/orders/${orderId}/confirm-all`, {
-    method: 'PUT',
-    body: JSON.stringify({}),
-  });
+  return apiFetch(`/orders/${orderId}/confirm-all`, { method: 'PUT', body: JSON.stringify({}) });
 }

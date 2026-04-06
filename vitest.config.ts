@@ -1,10 +1,7 @@
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  test: {
-    include: ['tests/**/*.test.ts'],
-    exclude: ['tests/api/**/*.test.ts'],
-  },
+  test: { include: ['tests/**/*.test.ts'], exclude: ['tests/api/**/*.test.ts'] },
   resolve: {
     alias: {
       $shared: new URL('./shared', import.meta.url).pathname,

@@ -100,10 +100,6 @@ export function computeAllocations(
     const cost = estimateCost(allocatedAmount, caseSize, effectivePrice, vatCode);
     const price = Math.round(cost.net * 100) / 100;
 
-    return {
-      memberId: claim.memberId,
-      amount: allocatedAmount,
-      price,
-    };
+    return { memberId: claim.memberId, amount: allocatedAmount, price };
   });
 }

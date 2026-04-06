@@ -70,11 +70,7 @@ export function groupItemsIntoRows(items: PositionedTextItem[]): PositionedRow[]
   const sorted = [...items].sort((a, b) => a.page - b.page || b.y - a.y);
 
   const rows: PositionedRow[] = [];
-  let currentRow: PositionedRow = {
-    y: sorted[0].y,
-    page: sorted[0].page,
-    tokens: [sorted[0]],
-  };
+  let currentRow: PositionedRow = { y: sorted[0].y, page: sorted[0].page, tokens: [sorted[0]] };
   let maxY = sorted[0].y;
 
   for (let i = 1; i < sorted.length; i++) {
@@ -329,9 +325,5 @@ export function parseInvoice(items: PositionedTextItem[]): ParsedInvoice {
     }
   }
 
-  return {
-    ...header,
-    items: lineItems,
-    totals,
-  };
+  return { ...header, items: lineItems, totals };
 }

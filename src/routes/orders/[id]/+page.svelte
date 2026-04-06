@@ -12,10 +12,46 @@
   let statusLoading = $state(false);
   let statusError = $state('');
 
+  let editingDeadline = $state(false);
+  let deadlineInput = $state('');
+  let deadlineLoading = $state(false);
+  let deadlineError = $state('');
+
+  function toDateInputValue(timestamp: number | null): string {
+    if (!timestamp) return '';
+    const d = new Date(timestamp * 1000);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  function startEditDeadline() {
+    deadlineInput = toDateInputValue(data.order.deadline);
+    deadlineError = '';
+    editingDeadline = true;
+  }
+
+  function cancelEditDeadline() {
+    editingDeadline = false;
+    deadlineError = '';
+  }
+
+  async function saveDeadline() {
+    deadlineLoading = true;
+    deadlineError = '';
+    try {
+      const deadline = deadlineInput ? Math.floor(new Date(deadlineInput).getTime() / 1000) : null;
+      await updateOrder(data.orderId, { deadline });
+      location.reload();
+    } catch (e: unknown) {
+      deadlineError = e instanceof Error ? e.message : 'Failed to update deadline';
+      deadlineLoading = false;
+    }
+  }
+
   const isOrganiser = $derived(
-    data.order.members.some(
-      (m) => m.memberId === auth.user?.id && m.role === 'organiser',
-    ),
+    data.order.members.some((m) => m.memberId === auth.user?.id && m.role === 'organiser'),
   );
 
   const deadlineText = $derived.by(() => {
@@ -30,9 +66,7 @@
   });
 
   const inviteUrl = $derived(
-    typeof window !== 'undefined'
-      ? `${window.location.origin}/join/${data.order.inviteCode}`
-      : '',
+    typeof window !== 'undefined' ? `${window.location.origin}/join/${data.order.inviteCode}` : '',
   );
 
   async function copyInviteLink() {
@@ -72,23 +106,51 @@
       await updateOrder(data.orderId, { status: next });
       location.reload();
     } catch (e: unknown) {
-      statusError =
-        e instanceof Error ? e.message : 'Failed to update status';
+      statusError = e instanceof Error ? e.message : 'Failed to update status';
     } finally {
       statusLoading = false;
     }
   }
 </script>
 
-{#if data.order.deadline}
+{#if data.order.deadline || isOrganiser}
   <section>
     <h3>Deadline</h3>
-    <p>
-      {formatDate(data.order.deadline)}
-      {#if deadlineText}
-        <small> — {deadlineText}</small>
+    {#if editingDeadline}
+      {#if deadlineError}
+        <p style="color: var(--color-terracotta);">{deadlineError}</p>
       {/if}
-    </p>
+      <div class="flex items-end gap-2">
+        <input type="date" bind:value={deadlineInput} disabled={deadlineLoading} />
+        <button onclick={saveDeadline} disabled={deadlineLoading}>
+          {deadlineLoading ? 'Saving…' : 'Save'}
+        </button>
+        <button
+          type="button"
+          class="outline"
+          onclick={cancelEditDeadline}
+          disabled={deadlineLoading}
+        >
+          Cancel
+        </button>
+      </div>
+    {:else}
+      <p>
+        {#if data.order.deadline}
+          {formatDate(data.order.deadline)}
+          {#if deadlineText}
+            <small> — {deadlineText}</small>
+          {/if}
+        {:else}
+          <small>No deadline set</small>
+        {/if}
+      </p>
+      {#if isOrganiser}
+        <button type="button" class="outline" onclick={startEditDeadline}>
+          {data.order.deadline ? 'Change deadline' : 'Set deadline'}
+        </button>
+      {/if}
+    {/if}
   </section>
 {/if}
 
@@ -111,9 +173,7 @@
             <td>{member.initials ?? '–'}</td>
             <td>
               {#if member.role === 'organiser'}
-                <mark class="badge-organiser">
-                  Organiser
-                </mark>
+                <mark class="badge-organiser"> Organiser </mark>
               {:else}
                 Member
               {/if}

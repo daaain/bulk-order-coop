@@ -15,10 +15,7 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects: [
-    {
-      name: 'setup',
-      testMatch: /auth\.setup\.ts/,
-    },
+    { name: 'setup', testMatch: /auth\.setup\.ts/ },
     {
       name: 'chromium',
       use: {

@@ -15,7 +15,7 @@
 </script>
 
 <svelte:head>
-	<title>My Orders — Bulk Order Co-op</title>
+  <title>My Orders — Bulk Order Co-op</title>
 </svelte:head>
 
 <h1 class="animate-in">My Orders</h1>
