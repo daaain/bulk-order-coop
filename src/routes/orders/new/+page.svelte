@@ -77,9 +77,8 @@
 		try {
 			const { key, csvText } = await uploadCatalogue(file);
 
-			// Parse and cache in IndexedDB for immediate browsing
+			// Parse once now so we can prewarm the cache after the order exists
 			const items = parseCatalogueCsv(csvText);
-			await storeCatalogue(key, items);
 
 			const orderData: { name: string; catalogueKey: string; deadline?: number } = {
 				name: name.trim(),
@@ -91,6 +90,10 @@
 			}
 
 			const order = await createOrder(orderData);
+
+			// Cache in IndexedDB namespaced to this order so the next page load is instant
+			await storeCatalogue(order.id, key, items);
+
 			goto(`/orders/${order.id}`);
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to create order';

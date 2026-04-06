@@ -50,7 +50,7 @@
 		error = '';
 		try {
 			const [catalogueItems, items] = await Promise.all([
-				loadCatalogue(data.order.catalogueKey),
+				loadCatalogue(data.orderId, data.order.catalogueKey),
 				fetchOrderItems(data.orderId)
 			]);
 			allItems = catalogueItems;

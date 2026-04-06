@@ -37,15 +37,9 @@ The order totals page shows exactly what each member owes, broken down by net, V
 - CSV catalogue upload with automatic parsing
 - Real-time case rounding indicators
 - Flexible claiming (exact, can take more, can take less, flexible)
-- Delivery tracking and reconciliation
 - Fair proportional allocation when deliveries differ from orders
 - Per-member cost breakdowns with VAT
-- Inline confirmation for destructive actions
 - PDF invoice upload for reconciliation
-
-## Limitations
-
-- Only one catalogue can be active at the moment for simplicity, so if you create a new order before finishing a previous one, the previous catalogue will be overwritten and the search will add values from the new catalogue to the order
 
 ## Self-hosting
 

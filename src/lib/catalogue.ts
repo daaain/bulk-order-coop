@@ -2,9 +2,12 @@ import type { ParsedCatalogueItem } from '$shared/csv';
 import { parseCatalogueCsv } from '$shared/csv';
 import { storeCatalogue, getCatalogueItems } from './catalogue-db';
 
-export async function loadCatalogue(catalogueKey: string): Promise<ParsedCatalogueItem[]> {
-  // Check IndexedDB cache first
-  const cached = await getCatalogueItems(catalogueKey);
+export async function loadCatalogue(
+  orderId: string,
+  catalogueKey: string,
+): Promise<ParsedCatalogueItem[]> {
+  // Check IndexedDB cache first (namespaced per order)
+  const cached = await getCatalogueItems(orderId, catalogueKey);
   if (cached) {
     return cached;
   }
@@ -28,8 +31,8 @@ export async function loadCatalogue(catalogueKey: string): Promise<ParsedCatalog
   const csvText = await res.text();
   const items = parseCatalogueCsv(csvText);
 
-  // Store in IndexedDB for future use
-  await storeCatalogue(catalogueKey, items);
+  // Store in IndexedDB for future use, namespaced by order
+  await storeCatalogue(orderId, catalogueKey, items);
 
   return items;
 }
