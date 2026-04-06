@@ -11,6 +11,14 @@
 		confirmAllocation,
 		confirmAllMyAllocations
 	} from '$lib/reconciliation';
+	import { loadInvoiceFromFile } from '$lib/invoice-loader';
+	import { matchInvoiceToOrder } from '$shared/invoice-matching';
+	import type {
+		InvoiceMatchResult,
+		DeliveryUpdate,
+		OrderItemForMatching
+	} from '$shared/invoice-matching';
+	import type { ParsedInvoice } from '$shared/invoice';
 	import type {
 		ReconciliationSummary,
 		ReconciliationItem,
@@ -29,6 +37,11 @@
 	let allocating = $state(false);
 	let confirming = $state(false);
 	let completing = $state(false);
+	let parsedInvoice = $state<ParsedInvoice | null>(null);
+	let invoiceResult = $state<InvoiceMatchResult | null>(null);
+	let parsingInvoice = $state(false);
+	let applyingInvoice = $state(false);
+	let invoiceError = $state('');
 
 	const isOrganiser = $derived(
 		data.order.members.some(
@@ -123,6 +136,65 @@
 			error = (err as Error).message || 'Failed to mark all as arrived';
 		} finally {
 			saving = false;
+		}
+	}
+
+	async function handleInvoiceUpload(event: Event) {
+		const input = event.target as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file || !recon) return;
+
+		parsingInvoice = true;
+		invoiceError = '';
+		parsedInvoice = null;
+		invoiceResult = null;
+
+		try {
+			const invoice = await loadInvoiceFromFile(file);
+			const orderItems: OrderItemForMatching[] = recon.items.map((i) => ({
+				orderItemId: i.orderItem.id,
+				productCode: i.orderItem.productCode,
+				description: i.catalogueItem.description,
+				casePrice: i.orderItem.casePrice,
+				unitsPerCase: i.orderItem.unitsPerCase,
+				packSize: i.orderItem.packSize
+			}));
+			parsedInvoice = invoice;
+			invoiceResult = matchInvoiceToOrder(invoice, orderItems);
+		} catch (err: unknown) {
+			invoiceError = (err as Error).message || 'Failed to parse invoice';
+		} finally {
+			parsingInvoice = false;
+			// Reset input so the same file can be re-selected after edits
+			input.value = '';
+		}
+	}
+
+	async function applyInvoice() {
+		if (!invoiceResult) return;
+		applyingInvoice = true;
+		invoiceError = '';
+		try {
+			const updates: DeliveryUpdate[] = [
+				...invoiceResult.matched,
+				...invoiceResult.missing
+			];
+			await Promise.all(
+				updates.map((u) =>
+					updateDeliveryStatus(data.orderId, u.orderItemId, {
+						status: u.status,
+						actualQuantity: u.actualQuantity,
+						actualPrice: u.actualPrice,
+						notes: u.notes
+					})
+				)
+			);
+			invoiceResult = null;
+			await loadReconciliation();
+		} catch (err: unknown) {
+			invoiceError = (err as Error).message || 'Failed to apply invoice';
+		} finally {
+			applyingInvoice = false;
 		}
 	}
 
@@ -236,6 +308,55 @@
 				>
 					Mark all as arrived
 				</button>
+
+				{#if isOrganiser}
+					<div class="invoice-upload">
+						<label for="invoice-pdf"><strong>Upload invoice PDF</strong></label>
+						<input
+							id="invoice-pdf"
+							type="file"
+							accept="application/pdf,.pdf"
+							onchange={handleInvoiceUpload}
+							disabled={parsingInvoice || applyingInvoice}
+						/>
+						{#if parsingInvoice}
+							<small aria-busy="true">Parsing invoice...</small>
+						{/if}
+						{#if invoiceError}
+							<small><mark>{invoiceError}</mark></small>
+						{/if}
+					</div>
+
+					{#if invoiceResult && parsedInvoice}
+						<article class="invoice-result">
+							<header>
+								<strong>Invoice {parsedInvoice.invoiceNumber}</strong> — {parsedInvoice.date}
+							</header>
+							<p>
+								<span data-testid="invoice-matched">{invoiceResult.matched.length} matched</span>,
+								<span data-testid="invoice-missing">{invoiceResult.missing.length} missing</span>,
+								<span data-testid="invoice-only">{invoiceResult.invoiceOnly.length} invoice-only</span>
+							</p>
+							{#if invoiceResult.invoiceOnly.length > 0}
+								<details>
+									<summary>Invoice items not on order</summary>
+									<ul>
+										{#each invoiceResult.invoiceOnly as line (line.productCode)}
+											<li>{line.productCode} — {line.description} ({line.invoiced} × {formatPrice(line.unitPrice ?? line.cost)})</li>
+										{/each}
+									</ul>
+								</details>
+							{/if}
+							<button
+								onclick={applyInvoice}
+								disabled={applyingInvoice}
+								aria-busy={applyingInvoice}
+							>
+								Apply invoice
+							</button>
+						</article>
+					{/if}
+				{/if}
 			</div>
 		{/if}
 
@@ -498,6 +619,15 @@
 							<td><strong>{formatPrice(recon.orderTotals.gross)}</strong></td>
 							<td></td>
 						</tr>
+						{#if parsedInvoice}
+							<tr>
+								<td><em>Invoice {parsedInvoice.invoiceNumber}</em></td>
+								<td>{formatPrice(parsedInvoice.totals.nettGoodsValue)}</td>
+								<td>{formatPrice(parsedInvoice.totals.vat)}</td>
+								<td>{formatPrice(parsedInvoice.totals.totalPayable)}</td>
+								<td></td>
+							</tr>
+						{/if}
 					</tfoot>
 				</table>
 			</figure>
@@ -535,5 +665,18 @@
 	.confirm-btn {
 		padding: 0.2em 0.6em;
 		font-size: 0.85em;
+	}
+
+	.invoice-upload {
+		margin-top: 1rem;
+	}
+
+	.invoice-upload input[type='file'] {
+		margin-bottom: 0.5rem;
+	}
+
+	.invoice-result {
+		margin-top: 1rem;
+		padding: 1rem;
 	}
 </style>
