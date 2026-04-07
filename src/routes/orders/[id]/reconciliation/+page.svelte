@@ -74,7 +74,11 @@
   let debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   async function loadReconciliation() {
-    loading = true;
+    // Only show the full-page loading state on the very first fetch.
+    // Subsequent refreshes keep the existing data visible so the UI doesn't
+    // flicker (and so e.g. form elements don't briefly unmount, which can
+    // race with user interactions and tests).
+    if (!recon) loading = true;
     error = '';
     try {
       recon = await fetchReconciliation(data.orderId);
@@ -276,15 +280,18 @@
 {#if !canView}
   <section>
     <p>
-      This order is not yet in reconciliation. The organiser needs to advance the order status to
-      "Reconciling" first.
+      This order is not yet in reconciliation. The organiser needs to get the invoice and upload it
+      first.
     </p>
   </section>
 {:else if loading}
   <p aria-busy="true">Loading reconciliation data...</p>
-{:else if error}
+{:else if error && !recon}
   <p><mark>{error}</mark></p>
 {:else if recon}
+  {#if error}
+    <p><mark>{error}</mark></p>
+  {/if}
   <!-- Delivery status table -->
   <section>
     <hgroup>

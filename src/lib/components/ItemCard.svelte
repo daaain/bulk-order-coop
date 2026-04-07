@@ -170,7 +170,16 @@
 
   {#if item.productCode}
     <footer>
-      <small>Code: {item.productCode}</small>
+      <small>
+        Code: {item.productCode} &middot;
+        <a
+          href="https://www.infinityfoodswholesale.coop/product/{btoa(item.productCode)}/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Open product page
+        </a>
+      </small>
     </footer>
   {/if}
 </article>

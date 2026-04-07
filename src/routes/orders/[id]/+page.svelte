@@ -17,13 +17,62 @@
   let deadlineLoading = $state(false);
   let deadlineError = $state('');
 
+  // Order deadlines are stored as 23:00 Europe/London (GMT/BST) on the chosen
+  // day. Infinity Foods' actual cut-off is 23:50, but organisers need time to
+  // file the order — so 23:00 London time is the real deadline we expose.
+  const LONDON_TZ = 'Europe/London';
+
+  function londonDateParts(timestamp: number): {
+    year: number;
+    month: number;
+    day: number;
+    hour: number;
+    minute: number;
+  } {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: LONDON_TZ,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(new Date(timestamp * 1000));
+    const get = (type: string) =>
+      Number(parts.find((p) => p.type === type)?.value ?? 0);
+    return {
+      year: get('year'),
+      month: get('month'),
+      day: get('day'),
+      // '24' can appear at midnight in some locales; normalise to 0
+      hour: get('hour') % 24,
+      minute: get('minute'),
+    };
+  }
+
   function toDateInputValue(timestamp: number | null): string {
     if (!timestamp) return '';
-    const d = new Date(timestamp * 1000);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
+    const { year, month, day } = londonDateParts(timestamp);
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+
+  // Convert a YYYY-MM-DD string to the Unix timestamp for 23:00 on that date
+  // in Europe/London, accounting for BST/GMT automatically.
+  function londonDeadlineTimestamp(dateStr: string): number {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    // Start with 23:00 "naive UTC" as a guess, then measure how far Europe/London
+    // is from UTC at that instant and subtract that offset.
+    const guess = Date.UTC(y, m - 1, d, 23, 0, 0);
+    const london = londonDateParts(Math.floor(guess / 1000));
+    const asIfUtc = Date.UTC(
+      london.year,
+      london.month - 1,
+      london.day,
+      london.hour,
+      london.minute,
+    );
+    const offsetMs = asIfUtc - guess;
+    return Math.floor((guess - offsetMs) / 1000);
   }
 
   function startEditDeadline() {
@@ -41,7 +90,7 @@
     deadlineLoading = true;
     deadlineError = '';
     try {
-      const deadline = deadlineInput ? Math.floor(new Date(deadlineInput).getTime() / 1000) : null;
+      const deadline = deadlineInput ? londonDeadlineTimestamp(deadlineInput) : null;
       await updateOrder(data.orderId, { deadline });
       location.reload();
     } catch (e: unknown) {
@@ -97,6 +146,13 @@
     });
   }
 
+  function formatDeadline(timestamp: number): string {
+    return new Date(timestamp * 1000).toLocaleDateString('en-GB', {
+      dateStyle: 'long',
+      timeZone: LONDON_TZ,
+    });
+  }
+
   async function advanceStatus() {
     const next = nextStatus[data.order.status];
     if (!next) return;
@@ -137,7 +193,7 @@
     {:else}
       <p>
         {#if data.order.deadline}
-          {formatDate(data.order.deadline)}
+          {formatDeadline(data.order.deadline)}, 11pm
           {#if deadlineText}
             <small> — {deadlineText}</small>
           {/if}
