@@ -19,7 +19,15 @@ const app = new Hono<{
   Variables: { jwtPayload: JwtPayload; memberId: string };
 }>();
 
-app.use('/*', requireAuth);
+// Auth required for all order routes EXCEPT the public invite preview lookup,
+// which lets unauthenticated users see what they're being invited to before
+// going through the magic-link flow.
+app.use('/*', async (c, next) => {
+  if (c.req.method === 'GET' && /\/join\/[^/]+$/.test(c.req.path)) {
+    return next();
+  }
+  return requireAuth(c, next);
+});
 
 // POST / — Create order
 app.post('/', async (c) => {

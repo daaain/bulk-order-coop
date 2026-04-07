@@ -1,9 +1,12 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
   import { useAuth } from '$lib/auth.svelte';
   import { apiFetch } from '$lib/api';
+  import { safeRedirect } from '$lib/redirect';
 
   const auth = useAuth();
+  const redirect = $derived(safeRedirect($page.url.searchParams.get('redirect')));
 
   let name = $state(auth.user?.name ?? '');
   let initials = $state(auth.user?.initials ?? '');
@@ -29,7 +32,7 @@
         }),
       });
       auth.updateUser(data.user);
-      goto('/orders');
+      goto(redirect ?? '/orders');
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to save profile';
     } finally {

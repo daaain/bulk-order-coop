@@ -152,6 +152,33 @@ describe('Order routes', () => {
   // ----------------------------------------------------------------
   // PUT /orders/:id
   // ----------------------------------------------------------------
+  describe('GET /orders/join/:code (public)', () => {
+    it('returns invite preview for unauthenticated callers', async () => {
+      const { member, catalogueKey } = await seedDeps();
+      const { body: order } = await createOrder(member.id, 'alice@test.local', catalogueKey);
+
+      // No Authorization header — must still succeed
+      const res = await appFetch(`/orders/join/${order.inviteCode}`);
+      expect(res.status).toBe(200);
+
+      const body = (await res.json()) as {
+        id: string;
+        name: string;
+        memberCount: number;
+        status: string;
+      };
+      expect(body.id).toBe(order.id);
+      expect(body.name).toBe('Weekly Order');
+      expect(body.memberCount).toBe(1);
+      expect(body.status).toBe('open');
+    });
+
+    it('returns 404 for an unknown invite code', async () => {
+      const res = await appFetch('/orders/join/does-not-exist');
+      expect(res.status).toBe(404);
+    });
+  });
+
   describe('PUT /orders/:id', () => {
     it('allows the organiser to update the name', async () => {
       const { member, catalogueKey } = await seedDeps();

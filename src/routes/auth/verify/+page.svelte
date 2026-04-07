@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import { useAuth } from '$lib/auth.svelte';
   import { apiFetch } from '$lib/api';
+  import { safeRedirect } from '$lib/redirect';
 
   const auth = useAuth();
 
@@ -11,6 +12,7 @@
 
   $effect(() => {
     const token = $page.url.searchParams.get('token');
+    const redirect = safeRedirect($page.url.searchParams.get('redirect'));
     if (!token) {
       error = 'No verification token provided';
       verifying = false;
@@ -30,9 +32,12 @@
       .then((data) => {
         auth.login(data.token, data.user);
         if (data.isNewUser || !data.user.name || !data.user.initials) {
-          goto('/auth/profile');
+          const next = redirect
+            ? `/auth/profile?redirect=${encodeURIComponent(redirect)}`
+            : '/auth/profile';
+          goto(next);
         } else {
-          goto('/orders');
+          goto(redirect ?? '/orders');
         }
       })
       .catch((err) => {

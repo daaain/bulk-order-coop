@@ -41,7 +41,7 @@
   {#if !auth.isAuthenticated}
     <section>
       <p>You need to sign in before joining an order.</p>
-      <a href="/" role="button">Sign in</a>
+      <a href="/?redirect=/join/{data.code}" role="button">Sign in</a>
     </section>
   {:else if data.error}
     <section>

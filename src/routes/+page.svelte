@@ -1,7 +1,9 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
   import { useAuth } from '$lib/auth.svelte';
   import { apiFetch } from '$lib/api';
+  import { safeRedirect } from '$lib/redirect';
 
   const auth = useAuth();
 
@@ -10,10 +12,12 @@
   let sent = $state(false);
   let error = $state('');
 
-  // If already authenticated, redirect to orders
+  const redirect = $derived(safeRedirect($page.url.searchParams.get('redirect')));
+
+  // If already authenticated, redirect to the requested destination (or orders)
   $effect(() => {
     if (auth.isAuthenticated) {
-      goto('/orders');
+      goto(redirect ?? '/orders');
     }
   });
 
@@ -25,7 +29,7 @@
     try {
       await apiFetch('/auth/magic-link', {
         method: 'POST',
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, redirect }),
       });
       sent = true;
     } catch (err) {

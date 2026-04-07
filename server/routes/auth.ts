@@ -9,9 +9,17 @@ import { signJwt } from '../services/jwt';
 
 const app = new Hono<{ Bindings: Bindings }>();
 
+// Same-origin path validation — must mirror src/lib/redirect.ts
+function safeRedirect(value: unknown): string | null {
+  if (typeof value !== 'string' || !value) return null;
+  if (!value.startsWith('/')) return null;
+  if (value.startsWith('//') || value.startsWith('/\\')) return null;
+  return value;
+}
+
 // POST /auth/magic-link — send a magic link email
 app.post('/magic-link', async (c) => {
-  const { email } = await c.req.json<{ email: string }>();
+  const { email, redirect } = await c.req.json<{ email: string; redirect?: string | null }>();
 
   if (!email || !email.includes('@')) {
     return c.json({ error: 'Valid email is required' }, 400);
@@ -30,7 +38,14 @@ app.post('/magic-link', async (c) => {
   // rather than the wrangler worker (:8787). Falls back to the request origin
   // for non-browser callers (tests, curl, etc.).
   const baseUrl = c.req.header('Origin') ?? new URL(c.req.url).origin;
-  await sendMagicLink(c.env.RESEND_API_KEY, email, token, baseUrl, c.env.EMAIL_FROM);
+  await sendMagicLink(
+    c.env.RESEND_API_KEY,
+    email,
+    token,
+    baseUrl,
+    c.env.EMAIL_FROM,
+    safeRedirect(redirect),
+  );
 
   return c.json({ message: 'Magic link sent' });
 });

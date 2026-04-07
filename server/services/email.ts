@@ -6,8 +6,10 @@ export async function sendMagicLink(
   token: string,
   baseUrl: string,
   fromAddress?: string,
+  redirect?: string | null,
 ): Promise<void> {
-  const verifyUrl = `${baseUrl}/auth/verify?token=${token}`;
+  const redirectQuery = redirect ? `&redirect=${encodeURIComponent(redirect)}` : '';
+  const verifyUrl = `${baseUrl}/auth/verify?token=${token}${redirectQuery}`;
 
   if (!apiKey || apiKey === 're_xxx') {
     console.log(`[email] DEV MODE — skipping Resend, magic link for ${email}: ${verifyUrl}`);
