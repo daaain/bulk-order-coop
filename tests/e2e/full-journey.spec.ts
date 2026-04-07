@@ -55,12 +55,12 @@ test.describe('Full order journey', () => {
     await expect(markAllBtn).toBeVisible({ timeout: 15000 });
     await markAllBtn.click();
 
-    // Wait for the save to complete (button becomes re-enabled or delivery status updates)
-    await page.waitForLoadState('networkidle');
-
-    // 8. Generate allocations
+    // 8. Generate allocations. The "Generate allocations" button is gated by
+    // `allDeliverySet`, so it only appears once markAllArrived() has finished
+    // PATCHing every item and reloaded the reconciliation. Waiting for the
+    // button to be visible is a deterministic signal — no networkidle needed.
     const allocateBtn = page.locator('button:has-text("Generate allocations")');
-    await expect(allocateBtn).toBeVisible({ timeout: 15000 });
+    await expect(allocateBtn).toBeVisible({ timeout: 30000 });
     await allocateBtn.click();
 
     // Wait for allocations to appear (can be slow under CI)

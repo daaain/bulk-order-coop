@@ -96,12 +96,12 @@ test.describe('Claims', () => {
     // Navigate to My Claims
     await page.click('a:has-text("Claims")');
     await page.waitForURL(/\/claims/);
-    await page.waitForLoadState('networkidle');
 
-    // Should show at least one claim — log page state on failure for debugging
+    // Should show at least one claim — log page state on failure for debugging.
+    // Web-first assertion polls until the row appears, so no networkidle wait.
     const rows = page.locator('tbody tr');
     try {
-      await expect(rows.first()).toBeVisible({ timeout: 10000 });
+      await expect(rows.first()).toBeVisible({ timeout: 15000 });
     } catch (e) {
       const mainText = await page.locator('main').innerText();
       console.log(`[claims-debug] Page text: ${mainText.substring(0, 500)}`);
