@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { createOrder } from '$lib/orders';
-  import { parseCatalogueCsv } from '$shared/csv';
+  import { decodeCsvBytes, parseCatalogueCsv } from '$shared/csv';
   import { storeCatalogue } from '$lib/catalogue-db';
 
   const dateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -62,7 +62,7 @@
     }
 
     const data: { key: string; itemCount: number } = await res.json();
-    const csvText = await csvFile.text();
+    const csvText = decodeCsvBytes(new Uint8Array(await csvFile.arrayBuffer()));
     return { key: data.key, csvText };
   }
 

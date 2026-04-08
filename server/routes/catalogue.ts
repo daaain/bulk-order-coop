@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Bindings } from '../index';
-import { parseCatalogueCsv } from '../../shared/csv';
+import { decodeCsvBytes, parseCatalogueCsv } from '../../shared/csv';
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -13,7 +13,8 @@ app.post('/', async (c) => {
     return c.json({ error: 'Missing required field: file' }, 400);
   }
 
-  const csvText = await file.text();
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const csvText = decodeCsvBytes(bytes);
   const parsedItems = parseCatalogueCsv(csvText);
 
   if (parsedItems.length === 0) {

@@ -51,6 +51,18 @@ const COL = {
   ACTIVE: 16,
 } as const;
 
+// Infinity Foods exports their CSV as Windows-1252, but we normalise to UTF-8
+// so storage and parsing can assume UTF-8 throughout. Try strict UTF-8 first
+// (so already-UTF-8 files pass through untouched), then fall back to
+// Windows-1252 for the legacy export.
+export function decodeCsvBytes(bytes: Uint8Array): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder('windows-1252').decode(bytes);
+  }
+}
+
 export function parseCatalogueCsv(csv: string): ParsedCatalogueItem[] {
   const lines = csv.replace(/\r\n/g, '\n').split('\n');
 

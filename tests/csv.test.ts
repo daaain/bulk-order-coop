@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCatalogueCsv } from '../shared/csv';
+import { decodeCsvBytes, parseCatalogueCsv } from '../shared/csv';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -274,6 +274,42 @@ describe('parseCatalogueCsv', () => {
       expect(looseItem!.unitsPerCase).toBeNull();
       expect(looseItem!.packSize).toBe(1);
       expect(looseItem!.unit).toBe('kg');
+    });
+  });
+
+  describe('decodeCsvBytes', () => {
+    it('decodes ASCII bytes as UTF-8', () => {
+      const bytes = new TextEncoder().encode('hello,world');
+      expect(decodeCsvBytes(bytes)).toBe('hello,world');
+    });
+
+    it('decodes valid UTF-8 bytes unchanged', () => {
+      const bytes = new TextEncoder().encode('Super Berries with açaí');
+      expect(decodeCsvBytes(bytes)).toBe('Super Berries with açaí');
+    });
+
+    it('falls back to Windows-1252 for non-UTF-8 bytes (Infinity Foods export)', () => {
+      // 0xE7 = ç, 0xED = í in Windows-1252 — invalid as UTF-8
+      const bytes = new Uint8Array([
+        ...new TextEncoder().encode('Super Berries with a'),
+        0xe7,
+        0x61,
+        0xed,
+      ]);
+      expect(decodeCsvBytes(bytes)).toBe('Super Berries with açaí');
+    });
+
+    it('decodes and parses a Windows-1252 encoded fixture', () => {
+      const bytes = readFileSync(resolve(__dirname, 'fixtures/invcat2-windows1252.csv'));
+      const csvText = decodeCsvBytes(new Uint8Array(bytes));
+
+      // Sanity: no U+FFFD replacement characters after decoding
+      expect(csvText).not.toContain('\uFFFD');
+      expect(csvText).toContain('Super Berries with açaí');
+
+      const items = parseCatalogueCsv(csvText);
+      expect(items).toHaveLength(1);
+      expect(items[0].description).toBe('Super Berries with açaí');
     });
   });
 });
