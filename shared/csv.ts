@@ -51,15 +51,17 @@ const COL = {
   ACTIVE: 16,
 } as const;
 
-// Infinity Foods exports their CSV as Windows-1252, but we normalise to UTF-8
-// so storage and parsing can assume UTF-8 throughout. Try strict UTF-8 first
-// (so already-UTF-8 files pass through untouched), then fall back to
-// Windows-1252 for the legacy export.
+// Infinity Foods exports their CSV as Mac Roman (their back office appears to
+// run on a Mac), but we normalise to UTF-8 so storage and parsing can assume
+// UTF-8 throughout. Try strict UTF-8 first (so already-UTF-8 files pass through
+// untouched), then fall back to Mac Roman for the legacy export. Mac Roman is
+// distinguishable from Windows-1252 by bytes like 0x8D (ç in Mac Roman,
+// undefined in Windows-1252) and 0x8E (é in Mac Roman, Ž in Windows-1252).
 export function decodeCsvBytes(bytes: Uint8Array): string {
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {
-    return new TextDecoder('windows-1252').decode(bytes);
+    return new TextDecoder('macintosh').decode(bytes);
   }
 }
 

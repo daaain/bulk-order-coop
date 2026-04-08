@@ -577,7 +577,12 @@
           </figure>
 
           {#if isMine && !isReadOnly && !summary.allConfirmed}
-            <button onclick={handleConfirmAll} disabled={confirming} aria-busy={confirming}>
+            <button
+              class="confirm-all-btn"
+              onclick={handleConfirmAll}
+              disabled={confirming}
+              aria-busy={confirming}
+            >
               Confirm all my allocations
             </button>
           {/if}
@@ -670,6 +675,11 @@
   .confirm-btn {
     padding: 0.2em 0.6em;
     font-size: 0.85em;
+  }
+
+  .confirm-all-btn {
+    width: auto;
+    margin: 1rem var(--pico-spacing, 1rem);
   }
 
   .invoice-upload {

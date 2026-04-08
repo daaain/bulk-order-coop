@@ -284,32 +284,49 @@ describe('parseCatalogueCsv', () => {
     });
 
     it('decodes valid UTF-8 bytes unchanged', () => {
-      const bytes = new TextEncoder().encode('Super Berries with açaí');
-      expect(decodeCsvBytes(bytes)).toBe('Super Berries with açaí');
+      const bytes = new TextEncoder().encode('Super Berries with açai');
+      expect(decodeCsvBytes(bytes)).toBe('Super Berries with açai');
     });
 
-    it('falls back to Windows-1252 for non-UTF-8 bytes (Infinity Foods export)', () => {
-      // 0xE7 = ç, 0xED = í in Windows-1252 — invalid as UTF-8
+    it('falls back to Mac Roman for non-UTF-8 bytes (Infinity Foods export)', () => {
+      // In Mac Roman: 0x8D = ç, 0x8E = é. Both are invalid as UTF-8 start bytes.
       const bytes = new Uint8Array([
-        ...new TextEncoder().encode('Super Berries with a'),
-        0xe7,
-        0x61,
-        0xed,
+        ...new TextEncoder().encode('Ana'),
+        0x8e,
+        0x2c,
+        ...new TextEncoder().encode('a'),
+        0x8d,
+        ...new TextEncoder().encode('ai'),
       ]);
-      expect(decodeCsvBytes(bytes)).toBe('Super Berries with açaí');
+      expect(decodeCsvBytes(bytes)).toBe('Ana\u00e9,a\u00e7ai');
     });
 
-    it('decodes and parses a Windows-1252 encoded fixture', () => {
-      const bytes = readFileSync(resolve(__dirname, 'fixtures/invcat2-windows1252.csv'));
+    it('does NOT misdecode Mac Roman bytes as Windows-1252', () => {
+      // Regression guard: Windows-1252 maps 0x8D to U+008D (invisible control)
+      // and 0x8E to Ž, which produced "aai" and "AnaŽ" for real product names.
+      // Mac Roman maps them to ç and é.
+      const bytes = new Uint8Array([0x8d, 0x8e]);
+      const decoded = decodeCsvBytes(bytes);
+      expect(decoded).toBe('\u00e7\u00e9');
+      expect(decoded).not.toContain('\u008d');
+      expect(decoded).not.toContain('\u017d'); // Ž
+    });
+
+    it('decodes and parses a Mac Roman encoded fixture from the real export', () => {
+      const bytes = readFileSync(resolve(__dirname, 'fixtures/invcat2-macroman.csv'));
       const csvText = decodeCsvBytes(new Uint8Array(bytes));
 
       // Sanity: no U+FFFD replacement characters after decoding
       expect(csvText).not.toContain('\uFFFD');
-      expect(csvText).toContain('Super Berries with açaí');
+      expect(csvText).toContain('Super Berries with açai');
+      expect(csvText).toContain('Ana\u00e9'); // "Anaé" brand name
 
       const items = parseCatalogueCsv(csvText);
-      expect(items).toHaveLength(1);
-      expect(items[0].description).toBe('Super Berries with açaí');
+      const acai = items.find((i) => i.productCode === '290903');
+      expect(acai?.description).toBe('Super Berries with açai');
+
+      const anaBrand = items.find((i) => i.productCode === '859347');
+      expect(anaBrand?.brand).toBe('Ana\u00e9');
     });
   });
 });
