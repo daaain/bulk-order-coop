@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateUnitPriceGross } from '../src/lib/format';
+import { calculateUnitPriceGross, getCaseIncrement } from '../src/lib/format';
 
 describe('calculateUnitPriceGross', () => {
   it('returns per-pack price for packaged items (unitsPerCase set)', () => {
@@ -48,5 +48,41 @@ describe('calculateUnitPriceGross', () => {
     const result = calculateUnitPriceGross(10, 0, null, 0, 'g');
     expect(result.price).toBe(0);
     expect(result.perUnit).toBe('kg');
+  });
+});
+
+describe('getCaseIncrement', () => {
+  it('returns unitsPerCase for packaged items (6×500g → 6 packs)', () => {
+    // Input is in packs, one case = 6 packs
+    expect(getCaseIncrement(6, 500)).toBe(6);
+  });
+
+  it('returns unitsPerCase for packaged items (12×1kg → 12 packs)', () => {
+    expect(getCaseIncrement(12, 1)).toBe(12);
+  });
+
+  it('returns packSize for bulk kg items (25kg rice → 25)', () => {
+    // Input is in kg, one case = 25kg
+    expect(getCaseIncrement(null, 25)).toBe(25);
+  });
+
+  it('returns packSize for bulk g items (500g loose → 500)', () => {
+    // Input is in g, one case = 500g
+    expect(getCaseIncrement(null, 500)).toBe(500);
+  });
+
+  it('returns packSize for bulk l items (5l oil → 5)', () => {
+    expect(getCaseIncrement(null, 5)).toBe(5);
+  });
+
+  it('returns undefined when both unitsPerCase and packSize are zero/null', () => {
+    expect(getCaseIncrement(null, 0)).toBeUndefined();
+  });
+
+  it('returns unitsPerCase when unitsPerCase is set, regardless of packSize', () => {
+    // 6×500g: should return 6, not 500
+    expect(getCaseIncrement(6, 500)).toBe(6);
+    // 4×250ml: should return 4, not 250
+    expect(getCaseIncrement(4, 250)).toBe(4);
   });
 });

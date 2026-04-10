@@ -5,8 +5,9 @@
     createClaim,
     updateClaim,
     removeClaim,
+    removeItemFromOrder,
   } from '$lib/claims';
-  import { formatPrice, formatCaseSize, calculateUnitPriceGross } from '$lib/format';
+  import { formatPrice, formatCaseSize, calculateUnitPriceGross, getCaseIncrement } from '$lib/format';
   import ClaimForm from '$lib/components/ClaimForm.svelte';
   import RoundingBar from '$lib/components/RoundingBar.svelte';
   import ConfirmButton from '$lib/components/ConfirmButton.svelte';
@@ -70,7 +71,8 @@
   }
 
   async function loadData() {
-    loading = true;
+    const isInitialLoad = orderItems.length === 0 && claims.length === 0;
+    if (isInitialLoad) loading = true;
     error = '';
     try {
       const [claimsResult, items] = await Promise.all([
@@ -84,6 +86,15 @@
       error = (err as Error).message || 'Failed to load claims';
     } finally {
       loading = false;
+    }
+  }
+
+  async function handleRemoveItem(itemId: string) {
+    try {
+      await removeItemFromOrder(data.orderId, itemId);
+      await loadData();
+    } catch (err: unknown) {
+      error = (err as Error).message || 'Failed to remove item';
     }
   }
 
@@ -223,6 +234,7 @@
             <ClaimForm
               unit={oi.catalogueItem.unit}
               {packaged}
+              caseIncrement={getCaseIncrement(oi.catalogueItem.unitsPerCase, oi.catalogueItem.packSize)}
               initialAmount={myClaim
                 ? packaged
                   ? toPacks(myClaim.amount, oi.catalogueItem.packSize)
@@ -250,9 +262,19 @@
               />
             </div>
           {:else}
-            <button class="outline" onclick={() => (claimingItemId = oi.orderItem.id)}>
-              Add claim
-            </button>
+            <div role="group">
+              <button class="outline" onclick={() => (claimingItemId = oi.orderItem.id)}>
+                Add claim
+              </button>
+              {#if oi.claims.length === 0}
+                <ConfirmButton
+                  label="✕"
+                  confirmLabel="Remove item?"
+                  onclick={() => handleRemoveItem(oi.orderItem.id)}
+                  class="outline secondary"
+                />
+              {/if}
+            </div>
           {/if}
         {/if}
       </article>
@@ -305,6 +327,7 @@
                     <ClaimForm
                       unit={mc.catalogueItem.unit}
                       {packaged}
+                      caseIncrement={getCaseIncrement(mc.catalogueItem.unitsPerCase, mc.catalogueItem.packSize)}
                       initialAmount={packaged
                         ? toPacks(mc.claim.amount, mc.catalogueItem.packSize)
                         : mc.claim.amount}

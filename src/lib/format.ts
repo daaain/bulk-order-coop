@@ -23,6 +23,20 @@ export function formatCaseSize(
   return formatWeight(packSize, unit);
 }
 
+/**
+ * Returns how much to increment the claim amount input by for one whole case.
+ * For packaged items (amount input is in packs): returns unitsPerCase (packs per case).
+ * For bulk/loose items (amount input is in natural units): returns packSize (case weight).
+ */
+export function getCaseIncrement(
+  unitsPerCase: number | null,
+  packSize: number,
+): number | undefined {
+  if (unitsPerCase != null && unitsPerCase > 0) return unitsPerCase;
+  if (packSize > 0) return packSize;
+  return undefined;
+}
+
 export function calculateUnitPriceGross(
   casePrice: number,
   vatPerCase: number,

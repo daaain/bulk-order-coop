@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { CatalogueItem, EnrichedOrderItem } from '$shared/types';
-  import { formatPrice, formatCaseSize, calculateUnitPriceGross } from '$lib/format';
+  import { formatPrice, formatCaseSize, calculateUnitPriceGross, getCaseIncrement } from '$lib/format';
   import RoundingBar from './RoundingBar.svelte';
   import ClaimForm from './ClaimForm.svelte';
   import ConfirmButton from './ConfirmButton.svelte';
@@ -41,6 +41,7 @@
 
   let isOnOrder = $derived(!!orderItem);
   let isPackaged = $derived(item.unitsPerCase != null && item.unitsPerCase > 0);
+  let caseIncrement = $derived(getCaseIncrement(item.unitsPerCase, item.packSize));
 
   let unitPrice = $derived(
     calculateUnitPriceGross(
@@ -147,6 +148,7 @@
         <ClaimForm
           unit={item.unit}
           packaged={isPackaged}
+          {caseIncrement}
           initialAmount={isPackaged ? toPacks(myClaim?.amount ?? 0) : (myClaim?.amount ?? 0)}
           initialFlexibility={myClaim?.flexibility ?? '*'}
           {loading}

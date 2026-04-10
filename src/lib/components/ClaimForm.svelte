@@ -2,6 +2,7 @@
   let {
     unit = '',
     packaged = false,
+    caseIncrement,
     initialAmount = 0,
     initialFlexibility = '*',
     loading = false,
@@ -10,6 +11,7 @@
   }: {
     unit?: string;
     packaged?: boolean;
+    caseIncrement?: number;
     initialAmount?: number;
     initialFlexibility?: string;
     loading?: boolean;
@@ -36,14 +38,24 @@
 >
   <label>
     {amountLabel}
-    <input
-      type="number"
-      bind:value={amount}
-      min={packaged ? 1 : step}
-      {step}
-      required
-      disabled={loading}
-    />
+    <span class="amount-row">
+      <input
+        type="number"
+        bind:value={amount}
+        min={packaged ? 1 : step}
+        {step}
+        required
+        disabled={loading}
+      />
+      {#if caseIncrement}
+        <button
+          type="button"
+          class="outline case-btn"
+          disabled={loading}
+          onclick={() => (amount += caseIncrement)}
+        >+1 case</button>
+      {/if}
+    </span>
   </label>
 
   <fieldset>
@@ -79,6 +91,23 @@
 <style>
   form {
     margin-top: var(--space-2);
+  }
+
+  .amount-row {
+    display: flex;
+    gap: var(--space-1);
+    align-items: center;
+  }
+
+  .amount-row input {
+    flex: 1;
+    margin-bottom: 0;
+  }
+
+  .case-btn {
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-bottom: 0;
   }
 
   fieldset {
