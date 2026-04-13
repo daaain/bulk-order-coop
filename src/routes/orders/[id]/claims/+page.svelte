@@ -7,7 +7,7 @@
     removeClaim,
     removeItemFromOrder,
   } from '$lib/claims';
-  import { formatPrice, formatCaseSize, calculateUnitPriceGross, getCaseIncrement } from '$lib/format';
+  import { formatPrice, formatCaseSize, calculateCasePriceGross, calculateUnitPriceGross, getCaseIncrement } from '$lib/format';
   import ClaimForm from '$lib/components/ClaimForm.svelte';
   import RoundingBar from '$lib/components/RoundingBar.svelte';
   import ConfirmButton from '$lib/components/ConfirmButton.svelte';
@@ -199,7 +199,7 @@
             oi.catalogueItem.packSize,
             oi.catalogueItem.unit,
           )}
-          &middot; {formatPrice(oi.catalogueItem.casePrice)}/case &middot; {formatPrice(
+          &middot; {formatPrice(calculateCasePriceGross(oi.catalogueItem.casePrice, oi.catalogueItem.vatPerCase))}/case &middot; {formatPrice(
             unitPrice.price,
           )}/{unitPrice.perUnit}
         </p>

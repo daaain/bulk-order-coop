@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { calculateUnitPriceGross, getCaseIncrement } from '../src/lib/format';
+import { calculateCasePriceGross, calculateUnitPriceGross, getCaseIncrement } from '../src/lib/format';
+
+describe('calculateCasePriceGross', () => {
+  it('returns case price with VAT included', () => {
+    // casePrice=17.00, vatPerCase=3.40 (20%) → 20.40
+    expect(calculateCasePriceGross(17.0, 3.4)).toBeCloseTo(20.4, 2);
+  });
+
+  it('returns case price unchanged when no VAT', () => {
+    expect(calculateCasePriceGross(15.55, 0)).toBeCloseTo(15.55, 2);
+  });
+});
 
 describe('calculateUnitPriceGross', () => {
   it('returns per-pack price for packaged items (unitsPerCase set)', () => {

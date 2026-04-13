@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { CatalogueItem, EnrichedOrderItem } from '$shared/types';
-  import { formatPrice, formatCaseSize, calculateUnitPriceGross, getCaseIncrement } from '$lib/format';
+  import { formatPrice, formatCaseSize, calculateCasePriceGross, calculateUnitPriceGross, getCaseIncrement } from '$lib/format';
   import RoundingBar from './RoundingBar.svelte';
   import ClaimForm from './ClaimForm.svelte';
   import ConfirmButton from './ConfirmButton.svelte';
@@ -115,7 +115,7 @@
 
   <p>
     {formatCaseSize(item.unitsPerCase, item.packSize, item.unit)}
-    &middot; {formatPrice(item.casePrice)}/case &middot; {formatPrice(
+    &middot; {formatPrice(calculateCasePriceGross(item.casePrice, item.vatPerCase))}/case &middot; {formatPrice(
       unitPrice.price,
     )}/{unitPrice.perUnit}
   </p>

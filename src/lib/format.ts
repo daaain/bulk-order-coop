@@ -37,6 +37,13 @@ export function getCaseIncrement(
   return undefined;
 }
 
+export function calculateCasePriceGross(
+  casePrice: number,
+  vatPerCase: number,
+): number {
+  return casePrice + vatPerCase;
+}
+
 export function calculateUnitPriceGross(
   casePrice: number,
   vatPerCase: number,
