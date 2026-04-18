@@ -139,6 +139,7 @@ bunx wrangler d1 migrations apply DB --remote
 - **Timestamps** are Unix seconds stored as integers.
 - **Booleans** in D1 are stored as `0`/`1` integers.
 - **Svelte 5 runes** are used throughout: `$state`, `$derived`, `$effect`, `$props()`.
+- **`$effect` + async**: Always wrap async/loader function calls inside `$effect` with `untrack()` from `'svelte'`. Without this, any `$state` read synchronously before the first `await` inside the called function becomes a tracked dependency — when the function then updates that state, the effect re-fires, creating an infinite request loop.
 - **CSV parsing** handles Infinity Foods format quirks — blank rows, `999xxx` filtering, VAT markers, organic flags, loose vs packaged items.
 
 ## Deployment

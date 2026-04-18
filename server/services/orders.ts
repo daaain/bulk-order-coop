@@ -97,6 +97,22 @@ export function isValidStatusTransition(from: string, to: string): boolean {
   return VALID_STATUS_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
+export function validateRoleChange(
+  body: unknown,
+): { role: 'organiser' | 'member' } | { error: string } {
+  if (!body || typeof body !== 'object') {
+    return { error: 'Request body must be an object' };
+  }
+
+  const { role } = body as Record<string, unknown>;
+
+  if (role !== 'organiser' && role !== 'member') {
+    return { error: "role must be 'organiser' or 'member'" };
+  }
+
+  return { role };
+}
+
 export function generateInviteCode(): string {
   return nanoid(10);
 }

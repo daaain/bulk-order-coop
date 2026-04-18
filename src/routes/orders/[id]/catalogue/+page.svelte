@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { searchItems, filterItems, getUniqueBrands, loadCatalogue } from '$lib/catalogue';
@@ -142,7 +143,7 @@
 
   $effect(() => {
     if ($page.params.id) {
-      loadData();
+      untrack(() => loadData());
     }
   });
 </script>

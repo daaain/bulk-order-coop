@@ -10,6 +10,7 @@ import {
   validateCreateOrder,
   validateUpdateOrder,
   validateJoinOrder,
+  validateRoleChange,
   isValidStatusTransition,
   generateInviteCode,
 } from '../services/orders';
@@ -263,6 +264,78 @@ app.post('/:id/join', async (c) => {
   await db.insert(orderMembers).values({ orderId, memberId, role: 'member', joinedAt: now });
 
   return c.json(order);
+});
+
+// PATCH /:id/members/:memberId/role — Change member role (organiser only)
+app.patch('/:id/members/:targetMemberId/role', async (c) => {
+  const db = drizzle(c.env.DB);
+  const orderId = c.req.param('id');
+  const targetMemberId = c.req.param('targetMemberId');
+  const callerId = c.get('memberId');
+  const body = await c.req.json();
+
+  const validated = validateRoleChange(body);
+  if ('error' in validated) {
+    return c.json({ error: validated.error }, 400);
+  }
+
+  // Check caller is an organiser
+  const [callerMembership] = await db
+    .select()
+    .from(orderMembers)
+    .where(
+      and(
+        eq(orderMembers.orderId, orderId),
+        eq(orderMembers.memberId, callerId),
+        eq(orderMembers.role, 'organiser'),
+      ),
+    );
+
+  if (!callerMembership) {
+    return c.json({ error: 'Only organisers can change member roles' }, 403);
+  }
+
+  // Check target is a member of this order
+  const [targetMembership] = await db
+    .select()
+    .from(orderMembers)
+    .where(and(eq(orderMembers.orderId, orderId), eq(orderMembers.memberId, targetMemberId)));
+
+  if (!targetMembership) {
+    return c.json({ error: 'Member not found in this order' }, 404);
+  }
+
+  // If demoting, ensure at least one organiser remains
+  if (validated.role === 'member' && targetMembership.role === 'organiser') {
+    const [{ count: organiserCount }] = await db
+      .select({ count: count() })
+      .from(orderMembers)
+      .where(and(eq(orderMembers.orderId, orderId), eq(orderMembers.role, 'organiser')));
+
+    if (organiserCount <= 1) {
+      return c.json({ error: 'Cannot demote the last organiser' }, 400);
+    }
+  }
+
+  await db
+    .update(orderMembers)
+    .set({ role: validated.role })
+    .where(and(eq(orderMembers.orderId, orderId), eq(orderMembers.memberId, targetMemberId)));
+
+  // Return updated member info
+  const [updated] = await db
+    .select({
+      memberId: orderMembers.memberId,
+      name: members.name,
+      initials: members.initials,
+      role: orderMembers.role,
+      joinedAt: orderMembers.joinedAt,
+    })
+    .from(orderMembers)
+    .innerJoin(members, eq(orderMembers.memberId, members.id))
+    .where(and(eq(orderMembers.orderId, orderId), eq(orderMembers.memberId, targetMemberId)));
+
+  return c.json(updated);
 });
 
 export default app;

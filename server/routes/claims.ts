@@ -11,6 +11,7 @@ import { calculateRounding } from '../../shared/rounding';
 import { estimateCost, calculateCaseSize } from '../../shared/costs';
 import type { MyClaim } from '../../shared/types';
 import { catalogueItemFromOrderItem } from './items';
+import type { DrizzleD1Database } from 'drizzle-orm/d1';
 
 const app = new Hono<{
   Bindings: Bindings;
@@ -19,25 +20,80 @@ const app = new Hono<{
 
 app.use('/*', requireAuth);
 
+/**
+ * Resolve who the claim operation targets and whether the caller is an organiser.
+ * When `bodyMemberId` is provided and differs from the caller, only organisers
+ * may proceed and the target must be a member of the order.
+ */
+async function resolveClaimTarget(
+  db: DrizzleD1Database,
+  orderId: string,
+  callerId: string,
+  bodyMemberId?: string,
+): Promise<
+  | { targetMemberId: string; isOrganiser: boolean }
+  | { error: string; status: 403 | 400 }
+> {
+  const [callerMembership] = await db
+    .select({ role: orderMembers.role })
+    .from(orderMembers)
+    .where(and(eq(orderMembers.orderId, orderId), eq(orderMembers.memberId, callerId)));
+
+  if (!callerMembership) {
+    return { error: 'You are not a member of this order', status: 403 };
+  }
+
+  const isOrganiser = callerMembership.role === 'organiser';
+
+  if (bodyMemberId && bodyMemberId !== callerId) {
+    if (!isOrganiser) {
+      return { error: "Only organisers can manage other members' claims", status: 403 };
+    }
+
+    const [targetMembership] = await db
+      .select({ memberId: orderMembers.memberId })
+      .from(orderMembers)
+      .where(and(eq(orderMembers.orderId, orderId), eq(orderMembers.memberId, bodyMemberId)));
+
+    if (!targetMembership) {
+      return { error: 'Target member is not a member of this order', status: 400 };
+    }
+
+    return { targetMemberId: bodyMemberId, isOrganiser };
+  }
+
+  return { targetMemberId: callerId, isOrganiser };
+}
+
+/** Check order status and return an error response if the operation is not allowed. */
+function checkOrderStatus(
+  status: string,
+  isOrganiser: boolean,
+): { error: string } | null {
+  if (!isOrganiser && status !== 'open') {
+    return { error: 'Order is not open' };
+  }
+  if (isOrganiser && status === 'complete') {
+    return { error: 'Order is complete' };
+  }
+  return null;
+}
+
 // POST /:id/items/:itemId/claims — Create claim
 app.post('/:id/items/:itemId/claims', async (c) => {
   const db = drizzle(c.env.DB);
   const orderId = c.req.param('id');
   const itemId = c.req.param('itemId');
-  const memberId = c.get('memberId');
+  const callerId = c.get('memberId');
   const body = await c.req.json();
 
-  // Check membership
-  const [membership] = await db
-    .select()
-    .from(orderMembers)
-    .where(and(eq(orderMembers.orderId, orderId), eq(orderMembers.memberId, memberId)));
-
-  if (!membership) {
-    return c.json({ error: 'You are not a member of this order' }, 403);
+  // Resolve target member
+  const target = await resolveClaimTarget(db, orderId, callerId, body.memberId);
+  if ('error' in target) {
+    return c.json({ error: target.error }, target.status);
   }
 
-  // Check order is open
+  // Check order status
   const [order] = await db
     .select({ status: orders.status })
     .from(orders)
@@ -47,8 +103,9 @@ app.post('/:id/items/:itemId/claims', async (c) => {
     return c.json({ error: 'Order not found' }, 404);
   }
 
-  if (order.status !== 'open') {
-    return c.json({ error: 'Order is not open' }, 400);
+  const statusError = checkOrderStatus(order.status, target.isOrganiser);
+  if (statusError) {
+    return c.json(statusError, 400);
   }
 
   // Check item exists and belongs to this order
@@ -70,10 +127,10 @@ app.post('/:id/items/:itemId/claims', async (c) => {
   const [existing] = await db
     .select({ id: claims.id })
     .from(claims)
-    .where(and(eq(claims.orderItemId, itemId), eq(claims.memberId, memberId)));
+    .where(and(eq(claims.orderItemId, itemId), eq(claims.memberId, target.targetMemberId)));
 
   if (existing) {
-    return c.json({ error: 'You already have a claim on this item' }, 409);
+    return c.json({ error: 'Member already has a claim on this item' }, 409);
   }
 
   const id = nanoid();
@@ -82,7 +139,7 @@ app.post('/:id/items/:itemId/claims', async (c) => {
   const claim = {
     id,
     orderItemId: itemId,
-    memberId,
+    memberId: target.targetMemberId,
     amount: validated.amount,
     flexibility: validated.flexibility ?? null,
     createdAt: now,
@@ -102,25 +159,21 @@ app.post('/:id/items/:itemId/claims', async (c) => {
   return c.json({ claim, rounding }, 201);
 });
 
-// PUT /:id/items/:itemId/claims — Update own claim
+// PUT /:id/items/:itemId/claims — Update claim
 app.put('/:id/items/:itemId/claims', async (c) => {
   const db = drizzle(c.env.DB);
   const orderId = c.req.param('id');
   const itemId = c.req.param('itemId');
-  const memberId = c.get('memberId');
+  const callerId = c.get('memberId');
   const body = await c.req.json();
 
-  // Check membership
-  const [membership] = await db
-    .select()
-    .from(orderMembers)
-    .where(and(eq(orderMembers.orderId, orderId), eq(orderMembers.memberId, memberId)));
-
-  if (!membership) {
-    return c.json({ error: 'You are not a member of this order' }, 403);
+  // Resolve target member
+  const target = await resolveClaimTarget(db, orderId, callerId, body.memberId);
+  if ('error' in target) {
+    return c.json({ error: target.error }, target.status);
   }
 
-  // Check order is open
+  // Check order status
   const [order] = await db
     .select({ status: orders.status })
     .from(orders)
@@ -130,8 +183,9 @@ app.put('/:id/items/:itemId/claims', async (c) => {
     return c.json({ error: 'Order not found' }, 404);
   }
 
-  if (order.status !== 'open') {
-    return c.json({ error: 'Order is not open' }, 400);
+  const statusError = checkOrderStatus(order.status, target.isOrganiser);
+  if (statusError) {
+    return c.json(statusError, 400);
   }
 
   // Check item exists
@@ -149,11 +203,11 @@ app.put('/:id/items/:itemId/claims', async (c) => {
     return c.json({ error: validated.error }, 400);
   }
 
-  // Check claim exists and belongs to this member
+  // Check claim exists for the target member
   const [existing] = await db
     .select()
     .from(claims)
-    .where(and(eq(claims.orderItemId, itemId), eq(claims.memberId, memberId)));
+    .where(and(eq(claims.orderItemId, itemId), eq(claims.memberId, target.targetMemberId)));
 
   if (!existing) {
     return c.json({ error: 'Claim not found' }, 404);
@@ -184,24 +238,21 @@ app.put('/:id/items/:itemId/claims', async (c) => {
   return c.json({ claim: updatedClaim, rounding });
 });
 
-// DELETE /:id/items/:itemId/claims — Remove own claim
+// DELETE /:id/items/:itemId/claims — Remove claim
 app.delete('/:id/items/:itemId/claims', async (c) => {
   const db = drizzle(c.env.DB);
   const orderId = c.req.param('id');
   const itemId = c.req.param('itemId');
-  const memberId = c.get('memberId');
+  const callerId = c.get('memberId');
+  const targetMemberIdParam = c.req.query('memberId');
 
-  // Check membership
-  const [membership] = await db
-    .select()
-    .from(orderMembers)
-    .where(and(eq(orderMembers.orderId, orderId), eq(orderMembers.memberId, memberId)));
-
-  if (!membership) {
-    return c.json({ error: 'You are not a member of this order' }, 403);
+  // Resolve target member
+  const target = await resolveClaimTarget(db, orderId, callerId, targetMemberIdParam);
+  if ('error' in target) {
+    return c.json({ error: target.error }, target.status);
   }
 
-  // Check order is open
+  // Check order status
   const [order] = await db
     .select({ status: orders.status })
     .from(orders)
@@ -211,8 +262,9 @@ app.delete('/:id/items/:itemId/claims', async (c) => {
     return c.json({ error: 'Order not found' }, 404);
   }
 
-  if (order.status !== 'open') {
-    return c.json({ error: 'Order is not open' }, 400);
+  const statusError = checkOrderStatus(order.status, target.isOrganiser);
+  if (statusError) {
+    return c.json(statusError, 400);
   }
 
   // Check item exists
@@ -225,11 +277,11 @@ app.delete('/:id/items/:itemId/claims', async (c) => {
     return c.json({ error: 'Item not found' }, 404);
   }
 
-  // Check claim exists and belongs to this member
+  // Check claim exists for the target member
   const [existing] = await db
     .select()
     .from(claims)
-    .where(and(eq(claims.orderItemId, itemId), eq(claims.memberId, memberId)));
+    .where(and(eq(claims.orderItemId, itemId), eq(claims.memberId, target.targetMemberId)));
 
   if (!existing) {
     return c.json({ error: 'Claim not found' }, 404);

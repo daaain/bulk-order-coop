@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { useAuth } from '$lib/auth.svelte';
-  import { updateOrder } from '$lib/orders';
+  import { updateOrder, updateMemberRole } from '$lib/orders';
   import ConfirmButton from '$lib/components/ConfirmButton.svelte';
 
   let { data }: { data: PageData } = $props();
@@ -11,6 +11,9 @@
   let copied = $state(false);
   let statusLoading = $state(false);
   let statusError = $state('');
+
+  let roleLoading = $state(false);
+  let roleError = $state('');
 
   let editingDeadline = $state(false);
   let deadlineInput = $state('');
@@ -153,6 +156,19 @@
     });
   }
 
+  async function handleRoleChange(memberId: string, role: 'organiser' | 'member') {
+    roleLoading = true;
+    roleError = '';
+    try {
+      await updateMemberRole(data.orderId, memberId, role);
+      location.reload();
+    } catch (e: unknown) {
+      roleError = e instanceof Error ? e.message : 'Failed to update role';
+    } finally {
+      roleLoading = false;
+    }
+  }
+
   async function advanceStatus() {
     const next = nextStatus[data.order.status];
     if (!next) return;
@@ -212,6 +228,9 @@
 
 <section>
   <h3>Members</h3>
+  {#if roleError}
+    <p style="color: var(--color-terracotta);">{roleError}</p>
+  {/if}
   <figure>
     <table>
       <thead>
@@ -220,6 +239,9 @@
           <th>Initials</th>
           <th>Role</th>
           <th>Joined</th>
+          {#if isOrganiser}
+            <th></th>
+          {/if}
         </tr>
       </thead>
       <tbody>
@@ -235,6 +257,25 @@
               {/if}
             </td>
             <td>{formatDate(member.joinedAt)}</td>
+            {#if isOrganiser}
+              <td>
+                {#if member.role === 'member'}
+                  <ConfirmButton
+                    label="Make organiser"
+                    onclick={() => handleRoleChange(member.memberId, 'organiser')}
+                    disabled={roleLoading}
+                    class="outline small"
+                  />
+                {:else if member.memberId !== auth.user?.id}
+                  <ConfirmButton
+                    label="Make member"
+                    onclick={() => handleRoleChange(member.memberId, 'member')}
+                    disabled={roleLoading}
+                    class="outline small"
+                  />
+                {/if}
+              </td>
+            {/if}
           </tr>
         {/each}
       </tbody>

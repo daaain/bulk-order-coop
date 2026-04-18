@@ -29,10 +29,11 @@ export function createClaim(
   itemId: string,
   amount: number,
   flexibility?: string,
+  memberId?: string,
 ): Promise<{ claim: Claim; rounding: RoundingResult }> {
   return apiFetch(`/orders/${orderId}/items/${itemId}/claims`, {
     method: 'POST',
-    body: JSON.stringify({ amount, flexibility }),
+    body: JSON.stringify({ amount, flexibility, ...(memberId && { memberId }) }),
   });
 }
 
@@ -41,18 +42,21 @@ export function updateClaim(
   itemId: string,
   amount: number,
   flexibility?: string,
+  memberId?: string,
 ): Promise<{ claim: Claim; rounding: RoundingResult }> {
   return apiFetch(`/orders/${orderId}/items/${itemId}/claims`, {
     method: 'PUT',
-    body: JSON.stringify({ amount, flexibility }),
+    body: JSON.stringify({ amount, flexibility, ...(memberId && { memberId }) }),
   });
 }
 
 export function removeClaim(
   orderId: string,
   itemId: string,
+  memberId?: string,
 ): Promise<{ rounding: RoundingResult }> {
-  return apiFetch(`/orders/${orderId}/items/${itemId}/claims`, { method: 'DELETE' });
+  const params = memberId ? `?memberId=${memberId}` : '';
+  return apiFetch(`/orders/${orderId}/items/${itemId}/claims${params}`, { method: 'DELETE' });
 }
 
 export function fetchMyClaims(

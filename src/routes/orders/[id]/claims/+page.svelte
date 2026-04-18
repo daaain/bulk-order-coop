@@ -14,6 +14,7 @@
   import type { MyClaim, EnrichedOrderItem } from '$shared/types';
   import type { LayoutData } from '../$types';
   import { useAuth } from '$lib/auth.svelte';
+  import { untrack } from 'svelte';
 
   let { data }: { data: LayoutData } = $props();
 
@@ -28,8 +29,19 @@
   let claimingItemId = $state<string | null>(null);
   let saving = $state(false);
 
-  let orderOpen = $derived(data.order.status === 'open');
+  // Organiser claim editing state
+  let editingClaimKey = $state<string | null>(null); // "itemId:memberId"
+  let claimingForItemId = $state<string | null>(null); // item where organiser is adding claim for another member
+  let selectedMemberId = $state('');
+
   let currentMemberId = $derived(auth.user?.id ?? '');
+  let isOrganiser = $derived(
+    data.order.members.some((m) => m.memberId === auth.user?.id && m.role === 'organiser'),
+  );
+  // Organisers can edit in all states except 'complete'; members only when 'open'
+  let canEdit = $derived(
+    isOrganiser ? data.order.status !== 'complete' : data.order.status === 'open',
+  );
 
   const flexLabels: Record<string, string> = {
     '*': 'Exact',
@@ -98,18 +110,27 @@
     }
   }
 
-  async function handleOrderItemClaim(oi: EnrichedOrderItem, amount: number, flexibility: string) {
+  async function handleOrderItemClaim(
+    oi: EnrichedOrderItem,
+    amount: number,
+    flexibility: string,
+    memberId?: string,
+  ) {
     saving = true;
     try {
       const packaged = isPackaged(oi.catalogueItem.unitsPerCase);
       const apiAmount = packaged ? toNatural(amount, oi.catalogueItem.packSize) : amount;
-      const myClaim = oi.claims.find((c) => c.memberId === currentMemberId);
-      if (myClaim) {
-        await updateClaim(data.orderId, oi.orderItem.id, apiAmount, flexibility);
+      const targetId = memberId ?? currentMemberId;
+      const existingClaim = oi.claims.find((c) => c.memberId === targetId);
+      if (existingClaim) {
+        await updateClaim(data.orderId, oi.orderItem.id, apiAmount, flexibility, memberId);
       } else {
-        await createClaim(data.orderId, oi.orderItem.id, apiAmount, flexibility);
+        await createClaim(data.orderId, oi.orderItem.id, apiAmount, flexibility, memberId);
       }
       claimingItemId = null;
+      editingClaimKey = null;
+      claimingForItemId = null;
+      selectedMemberId = '';
       await loadData();
     } catch (err: unknown) {
       error = (err as Error).message || 'Failed to save claim';
@@ -118,9 +139,10 @@
     }
   }
 
-  async function handleOrderItemRemoveClaim(itemId: string) {
+  async function handleOrderItemRemoveClaim(itemId: string, memberId?: string) {
     try {
-      await removeClaim(data.orderId, itemId);
+      await removeClaim(data.orderId, itemId, memberId);
+      editingClaimKey = null;
       await loadData();
     } catch (err: unknown) {
       error = (err as Error).message || 'Failed to remove claim';
@@ -154,7 +176,7 @@
 
   $effect(() => {
     if (data.orderId) {
-      loadData();
+      untrack(() => loadData());
     }
   });
 </script>
@@ -176,6 +198,7 @@
   {#if orderItems.length === 0}
     <p>No items have been added to this order yet.</p>
   {:else}
+    <div class="items-grid">
     {#each orderItems as oi (oi.orderItem.id)}
       {@const packaged = isPackaged(oi.catalogueItem.unitsPerCase)}
       {@const unitPrice = calculateUnitPriceGross(
@@ -209,17 +232,66 @@
               {#each oi.claims as claim, i}
                 {#if i > 0},
                 {/if}
-                <strong>{claim.memberInitials ?? '??'}</strong>: {formatClaimAmount(
-                  claim.amount,
-                  oi.catalogueItem.unitsPerCase,
-                  oi.catalogueItem.packSize,
-                  oi.catalogueItem.unit,
-                )}{#if claim.flexibility && claim.flexibility !== '*'}{flexShortLabels[
-                    claim.flexibility
-                  ]}{/if}
+                {#if isOrganiser && canEdit}
+                  <button
+                    class="claim-chip"
+                    onclick={() => {
+                      editingClaimKey = editingClaimKey === `${oi.orderItem.id}:${claim.memberId}`
+                        ? null
+                        : `${oi.orderItem.id}:${claim.memberId}`;
+                      claimingItemId = null;
+                      claimingForItemId = null;
+                    }}
+                  >
+                    <strong>{claim.memberInitials ?? '??'}</strong>: {formatClaimAmount(
+                      claim.amount,
+                      oi.catalogueItem.unitsPerCase,
+                      oi.catalogueItem.packSize,
+                      oi.catalogueItem.unit,
+                    )}{#if claim.flexibility && claim.flexibility !== '*'}{flexShortLabels[
+                        claim.flexibility
+                      ]}{/if}
+                  </button>
+                {:else}
+                  <strong>{claim.memberInitials ?? '??'}</strong>: {formatClaimAmount(
+                    claim.amount,
+                    oi.catalogueItem.unitsPerCase,
+                    oi.catalogueItem.packSize,
+                    oi.catalogueItem.unit,
+                  )}{#if claim.flexibility && claim.flexibility !== '*'}{flexShortLabels[
+                      claim.flexibility
+                    ]}{/if}
+                {/if}
               {/each}
             </small>
           </p>
+
+          <!-- Organiser editing another member's claim -->
+          {#each oi.claims as claim}
+            {#if editingClaimKey === `${oi.orderItem.id}:${claim.memberId}`}
+              <div class="organiser-edit">
+                <small><strong>Editing {claim.memberName ?? claim.memberInitials ?? 'member'}'s claim</strong></small>
+                <ClaimForm
+                  unit={oi.catalogueItem.unit}
+                  {packaged}
+                  caseIncrement={getCaseIncrement(oi.catalogueItem.unitsPerCase, oi.catalogueItem.packSize)}
+                  initialAmount={packaged
+                    ? toPacks(claim.amount, oi.catalogueItem.packSize)
+                    : claim.amount}
+                  initialFlexibility={claim.flexibility ?? '*'}
+                  loading={saving}
+                  onsubmit={(amount, flexibility) =>
+                    handleOrderItemClaim(oi, amount, flexibility, claim.memberId)}
+                  oncancel={() => (editingClaimKey = null)}
+                />
+                <ConfirmButton
+                  label="Remove this claim"
+                  onclick={() => handleOrderItemRemoveClaim(oi.orderItem.id, claim.memberId)}
+                  class="outline secondary"
+                />
+              </div>
+            {/if}
+          {/each}
         {:else}
           <p><small>No claims yet</small></p>
         {/if}
@@ -229,7 +301,7 @@
           isPackaged={packaged}
         />
 
-        {#if orderOpen}
+        {#if canEdit}
           {#if claimingItemId === oi.orderItem.id}
             <ClaimForm
               unit={oi.catalogueItem.unit}
@@ -276,9 +348,76 @@
               {/if}
             </div>
           {/if}
+
+          <!-- Organiser: claim on behalf of another member -->
+          {#if isOrganiser}
+            {#if claimingForItemId === oi.orderItem.id}
+              {@const claimedMemberIds = new Set(oi.claims.map((c) => c.memberId))}
+              {@const availableMembers = data.order.members.filter(
+                (m) => !claimedMemberIds.has(m.memberId),
+              )}
+              {#if availableMembers.length === 0}
+                <p class="claim-for-member"><small>All members have claims on this item.</small></p>
+                <button class="outline secondary" onclick={() => (claimingForItemId = null)}>
+                  Cancel
+                </button>
+              {:else}
+                <div class="organiser-edit claim-for-member">
+                  <label>
+                    Claim for member
+                    <select bind:value={selectedMemberId}>
+                      <option value="" disabled>Select member...</option>
+                      {#each availableMembers as m}
+                        <option value={m.memberId}>{m.name ?? m.initials ?? m.memberId}</option>
+                      {/each}
+                    </select>
+                  </label>
+                  {#if selectedMemberId}
+                    <ClaimForm
+                      unit={oi.catalogueItem.unit}
+                      {packaged}
+                      caseIncrement={getCaseIncrement(oi.catalogueItem.unitsPerCase, oi.catalogueItem.packSize)}
+                      initialAmount={0}
+                      initialFlexibility="*"
+                      loading={saving}
+                      onsubmit={(amount, flexibility) =>
+                        handleOrderItemClaim(oi, amount, flexibility, selectedMemberId)}
+                      oncancel={() => {
+                        claimingForItemId = null;
+                        selectedMemberId = '';
+                      }}
+                    />
+                  {:else}
+                    <button
+                      class="outline secondary"
+                      onclick={() => {
+                        claimingForItemId = null;
+                        selectedMemberId = '';
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  {/if}
+                </div>
+              {/if}
+            {:else}
+              <button
+                class="outline secondary small claim-for-member"
+                onclick={() => {
+                  claimingForItemId = oi.orderItem.id;
+                  editingClaimKey = null;
+                  claimingItemId = null;
+                  selectedMemberId = '';
+                }}
+              >
+                Claim for member
+              </button>
+            {/if}
+          {/if}
         {/if}
       </article>
     {/each}
+    </div>
   {/if}
 
   <!-- My Claims section -->
@@ -301,7 +440,7 @@
             <th>Amount</th>
             <th>Flexibility</th>
             <th>Est. cost</th>
-            {#if orderOpen}
+            {#if canEdit}
               <th></th>
             {/if}
           </tr>
@@ -321,7 +460,7 @@
               </td>
               <td>{flexLabels[mc.claim.flexibility ?? '*'] ?? mc.claim.flexibility}</td>
               <td>{formatPrice(mc.estimatedCost.gross)}</td>
-              {#if orderOpen}
+              {#if canEdit}
                 <td>
                   {#if editingItemId === mc.claim.orderItemId}
                     <ClaimForm
@@ -362,22 +501,65 @@
             <td colspan="2"></td>
             <td><strong>Net</strong></td>
             <td>{formatPrice(totals.net)}</td>
-            {#if orderOpen}<td></td>{/if}
+            {#if canEdit}<td></td>{/if}
           </tr>
           <tr>
             <td colspan="2"></td>
             <td><strong>VAT</strong></td>
             <td>{formatPrice(totals.vat)}</td>
-            {#if orderOpen}<td></td>{/if}
+            {#if canEdit}<td></td>{/if}
           </tr>
           <tr>
             <td colspan="2"></td>
             <td><strong>Total</strong></td>
             <td><strong>{formatPrice(totals.gross)}</strong></td>
-            {#if orderOpen}<td></td>{/if}
+            {#if canEdit}<td></td>{/if}
           </tr>
         </tfoot>
       </table>
     </figure>
   {/if}
 {/if}
+
+<style>
+  .items-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
+  }
+
+  @media (min-width: 768px) {
+    .items-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  .items-grid article {
+    margin-bottom: 0;
+  }
+
+  .claim-for-member {
+    margin-top: var(--space-3);
+  }
+
+  .claim-chip {
+    all: unset;
+    cursor: pointer;
+    padding: 0.1em 0.3em;
+    border-radius: 4px;
+    display: inline;
+  }
+
+  .claim-chip:hover {
+    background: var(--pico-primary-background);
+    color: var(--pico-primary-inverse);
+  }
+
+  .organiser-edit {
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: var(--pico-border-radius);
+  }
+</style>

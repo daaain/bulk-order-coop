@@ -248,6 +248,144 @@ describe('Order routes', () => {
   });
 
   // ----------------------------------------------------------------
+  // PATCH /orders/:id/members/:memberId/role
+  // ----------------------------------------------------------------
+  describe('PATCH /orders/:id/members/:memberId/role', () => {
+    async function seedOrderWithTwoMembers() {
+      const { member, catalogueKey } = await seedDeps();
+      const { body: order } = await createOrder(member.id, 'alice@test.local', catalogueKey);
+      const bob = await seedMember('bob@test.local', 'Bob', 'BO');
+      await authFetch(`/orders/${order.id}/join`, bob.id, 'bob@test.local', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inviteCode: order.inviteCode }),
+      });
+      return { alice: member, bob, order };
+    }
+
+    it('organiser can promote a member to organiser', async () => {
+      const { alice, bob, order } = await seedOrderWithTwoMembers();
+
+      const res = await authFetch(
+        `/orders/${order.id}/members/${bob.id}/role`,
+        alice.id,
+        'alice@test.local',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: 'organiser' }),
+        },
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { memberId: string; role: string; name: string };
+      expect(body.memberId).toBe(bob.id);
+      expect(body.role).toBe('organiser');
+      expect(body.name).toBe('Bob');
+    });
+
+    it('organiser can demote another organiser when there are 2+', async () => {
+      const { alice, bob, order } = await seedOrderWithTwoMembers();
+
+      // First promote Bob
+      await authFetch(`/orders/${order.id}/members/${bob.id}/role`, alice.id, 'alice@test.local', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'organiser' }),
+      });
+
+      // Now demote Bob
+      const res = await authFetch(
+        `/orders/${order.id}/members/${bob.id}/role`,
+        alice.id,
+        'alice@test.local',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: 'member' }),
+        },
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { role: string };
+      expect(body.role).toBe('member');
+    });
+
+    it('rejects demotion of the last organiser with 400', async () => {
+      const { alice, order } = await seedOrderWithTwoMembers();
+
+      // Try to demote Alice (the only organiser)
+      const res = await authFetch(
+        `/orders/${order.id}/members/${alice.id}/role`,
+        alice.id,
+        'alice@test.local',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: 'member' }),
+        },
+      );
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/last organiser/i);
+    });
+
+    it('non-organiser cannot change roles (403)', async () => {
+      const { alice, bob, order } = await seedOrderWithTwoMembers();
+
+      const res = await authFetch(
+        `/orders/${order.id}/members/${alice.id}/role`,
+        bob.id,
+        'bob@test.local',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: 'member' }),
+        },
+      );
+
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects invalid role values with 400', async () => {
+      const { alice, bob, order } = await seedOrderWithTwoMembers();
+
+      const res = await authFetch(
+        `/orders/${order.id}/members/${bob.id}/role`,
+        alice.id,
+        'alice@test.local',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: 'admin' }),
+        },
+      );
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/role/i);
+    });
+
+    it('returns 404 for a non-existent target member', async () => {
+      const { alice, order } = await seedOrderWithTwoMembers();
+
+      const res = await authFetch(
+        `/orders/${order.id}/members/nonexistent/role`,
+        alice.id,
+        'alice@test.local',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: 'organiser' }),
+        },
+      );
+
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // ----------------------------------------------------------------
   // POST /orders/:id/join
   // ----------------------------------------------------------------
   describe('POST /orders/:id/join', () => {

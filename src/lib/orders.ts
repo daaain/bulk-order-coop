@@ -34,3 +34,14 @@ export async function joinOrder(orderId: string, inviteCode: string): Promise<Or
 export async function lookupInviteCode(code: string): Promise<OrderPreview> {
   return apiFetch<OrderPreview>(`/orders/join/${code}`);
 }
+
+export async function updateMemberRole(
+  orderId: string,
+  memberId: string,
+  role: 'organiser' | 'member',
+): Promise<{ memberId: string; role: string }> {
+  return apiFetch(`/orders/${orderId}/members/${memberId}/role`, {
+    method: 'PATCH',
+    body: JSON.stringify({ role }),
+  });
+}

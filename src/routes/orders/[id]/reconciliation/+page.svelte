@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import type { LayoutData } from '../$types';
   import { useAuth } from '$lib/auth.svelte';
   import { formatPrice, formatWeight, formatCaseSize } from '$lib/format';
@@ -266,7 +267,7 @@
 
   $effect(() => {
     if (data.orderId && canView) {
-      loadReconciliation();
+      untrack(() => loadReconciliation());
     }
   });
 </script>
