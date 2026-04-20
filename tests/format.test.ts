@@ -27,6 +27,32 @@ describe('calculateUnitPriceGross', () => {
     expect(result.perUnit).toBe('pack');
   });
 
+  it('includes per-kg secondary price for packaged g items', () => {
+    // 6×500g = 3000g total, gross=15.55 → per-kg = 15.55/3 = 5.1833
+    const result = calculateUnitPriceGross(15.55, 0, 6, 500, 'g');
+    expect(result.secondary?.price).toBeCloseTo(5.18, 2);
+    expect(result.secondary?.perUnit).toBe('kg');
+  });
+
+  it('includes per-kg secondary price for packaged kg items', () => {
+    // 5×1kg = 5kg total, gross=5.55+1.11=6.66 → per-kg = 6.66/5 = 1.332
+    const result = calculateUnitPriceGross(5.55, 1.11, 5, 1, 'kg');
+    expect(result.secondary?.price).toBeCloseTo(1.33, 2);
+    expect(result.secondary?.perUnit).toBe('kg');
+  });
+
+  it('includes per-l secondary price for packaged ml items', () => {
+    // 12×250ml = 3000ml total, gross=9 → per-l = 9/3 = 3
+    const result = calculateUnitPriceGross(9, 0, 12, 250, 'ml');
+    expect(result.secondary?.price).toBeCloseTo(3, 2);
+    expect(result.secondary?.perUnit).toBe('l');
+  });
+
+  it('omits secondary price for packaged items with non-weight unit', () => {
+    const result = calculateUnitPriceGross(10, 0, 6, 1, 'each');
+    expect(result.secondary).toBeUndefined();
+  });
+
   it('returns per-kg price for loose g items (no unitsPerCase)', () => {
     // loose 500g, casePrice=11.65, vat=2.33 → gross=13.98, per-kg=(13.98/500)*1000=27.96
     const result = calculateUnitPriceGross(11.65, 2.33, null, 500, 'g');

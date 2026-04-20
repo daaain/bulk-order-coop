@@ -114,7 +114,9 @@
   {/if}
 
   <p>
-    {formatCaseSize(item.unitsPerCase, item.packSize, item.unit)}
+    {formatCaseSize(item.unitsPerCase, item.packSize, item.unit)} {#if unitPrice.secondary}
+      ({formatPrice(unitPrice.secondary.price)}/{unitPrice.secondary.perUnit})
+    {/if}
     &middot; {formatPrice(calculateCasePriceGross(item.casePrice, item.vatPerCase))}/case &middot; {formatPrice(
       unitPrice.price,
     )}/{unitPrice.perUnit}

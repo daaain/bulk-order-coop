@@ -24,9 +24,7 @@
   // svelte-ignore state_referenced_locally
   let flexibility = $state(initialFlexibility);
 
-  let step = $derived(
-    packaged ? 1 : unit === 'kg' || unit === 'l' || unit === 'g' || unit === 'ml' ? 0.1 : 1,
-  );
+  let step = $derived<number | 'any'>(packaged ? 1 : 'any');
   let amountLabel = $derived(packaged ? 'Packs' : `Amount${unit ? ` (${unit})` : ''}`);
 </script>
 
@@ -42,7 +40,7 @@
       <input
         type="number"
         bind:value={amount}
-        min={packaged ? 1 : step}
+        min={packaged ? 1 : 0}
         {step}
         required
         disabled={loading}

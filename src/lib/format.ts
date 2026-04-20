@@ -44,18 +44,34 @@ export function calculateCasePriceGross(
   return casePrice + vatPerCase;
 }
 
+export interface UnitPrice {
+  price: number;
+  perUnit: string;
+  secondary?: { price: number; perUnit: string };
+}
+
+function weightPriceFromTotal(gross: number, totalSize: number, unit: string) {
+  if (totalSize === 0) return undefined;
+  if (unit === 'g') return { price: (gross / totalSize) * 1000, perUnit: 'kg' };
+  if (unit === 'ml') return { price: (gross / totalSize) * 1000, perUnit: 'l' };
+  if (unit === 'l') return { price: gross / totalSize, perUnit: 'l' };
+  if (unit === 'kg') return { price: gross / totalSize, perUnit: 'kg' };
+  return undefined;
+}
+
 export function calculateUnitPriceGross(
   casePrice: number,
   vatPerCase: number,
   unitsPerCase: number | null,
   packSize: number,
   unit: string,
-): { price: number; perUnit: string } {
+): UnitPrice {
   const gross = casePrice + vatPerCase;
 
-  // Packaged items: price per pack
+  // Packaged items: price per pack, plus optional per-kg/l when pack size is a weight/volume
   if (unitsPerCase) {
-    return { price: gross / unitsPerCase, perUnit: 'pack' };
+    const secondary = weightPriceFromTotal(gross, unitsPerCase * packSize, unit);
+    return { price: gross / unitsPerCase, perUnit: 'pack', secondary };
   }
 
   // Loose items: price per kg or l
@@ -64,15 +80,5 @@ export function calculateUnitPriceGross(
     return { price: 0, perUnit };
   }
 
-  if (unit === 'g') {
-    return { price: (gross / packSize) * 1000, perUnit: 'kg' };
-  }
-  if (unit === 'ml') {
-    return { price: (gross / packSize) * 1000, perUnit: 'l' };
-  }
-  if (unit === 'l') {
-    return { price: gross / packSize, perUnit: 'l' };
-  }
-  // kg or other
-  return { price: gross / packSize, perUnit: 'kg' };
+  return weightPriceFromTotal(gross, packSize, unit) ?? { price: gross / packSize, perUnit: 'kg' };
 }

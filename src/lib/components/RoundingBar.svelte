@@ -36,6 +36,10 @@
   function toPackDisplay(amount: number): number {
     return packSize && packSize > 0 ? Math.round(amount / packSize) : amount;
   }
+
+  function formatAmount(amount: number): string {
+    return parseFloat(amount.toFixed(3)).toString();
+  }
 </script>
 
 <div class="rounding-bar" style="--bar-colour: {colour};">
@@ -45,7 +49,7 @@
     {#if rounding.gap > 0 && rounding.status !== 'ready'}
       — need {isPackaged
         ? `${toPackDisplay(rounding.gap)} more pack${toPackDisplay(rounding.gap) !== 1 ? 's' : ''}`
-        : `${rounding.gap} more`}
+        : `${formatAmount(rounding.gap)} more`}
     {/if}
     &middot;
     {#if isPackaged}
@@ -53,7 +57,9 @@
         rounding.casesNeeded * rounding.caseSize,
       )} packs
     {:else}
-      {rounding.totalClaimed}/{rounding.casesNeeded * rounding.caseSize}
+      {formatAmount(rounding.totalClaimed)}/{formatAmount(
+        rounding.casesNeeded * rounding.caseSize,
+      )}
     {/if}
     ({rounding.casesNeeded} case{rounding.casesNeeded !== 1 ? 's' : ''})
   </small>
