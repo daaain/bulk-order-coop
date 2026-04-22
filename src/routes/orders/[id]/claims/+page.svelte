@@ -8,6 +8,7 @@
     removeItemFromOrder,
   } from '$lib/claims';
   import { formatPrice, getCaseIncrement } from '$lib/format';
+  import { loadCatalogue } from '$lib/catalogue';
   import ClaimForm from '$lib/components/ClaimForm.svelte';
   import ItemCard from '$lib/components/ItemCard.svelte';
   import ConfirmButton from '$lib/components/ConfirmButton.svelte';
@@ -22,6 +23,7 @@
 
   let claims = $state<MyClaim[]>([]);
   let orderItems = $state<EnrichedOrderItem[]>([]);
+  let onOfferCodes = $state<Set<string>>(new Set());
   let totals = $state({ net: 0, vat: 0, gross: 0 });
   let loading = $state(true);
   let error = $state('');
@@ -103,13 +105,15 @@
     if (isInitialLoad) loading = true;
     error = '';
     try {
-      const [claimsResult, items] = await Promise.all([
+      const [claimsResult, items, catalogue] = await Promise.all([
         fetchMyClaims(data.orderId),
         fetchOrderItems(data.orderId),
+        loadCatalogue(data.orderId, data.order.catalogueKey).catch(() => []),
       ]);
       claims = claimsResult.claims;
       totals = claimsResult.totals;
       orderItems = items;
+      onOfferCodes = new Set(catalogue.filter((c) => c.onOffer).map((c) => c.productCode));
     } catch (err: unknown) {
       error = (err as Error).message || 'Failed to load claims';
     } finally {
@@ -215,7 +219,7 @@
     <div class="items-grid">
       {#each orderItems as oi (oi.orderItem.id)}
         <ItemCard
-          item={oi.catalogueItem}
+          item={{ ...oi.catalogueItem, onOffer: onOfferCodes.has(oi.catalogueItem.productCode) }}
           orderItem={oi}
           {currentMemberId}
           {canEdit}

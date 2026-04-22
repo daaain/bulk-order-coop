@@ -135,10 +135,10 @@
   <header>
     <strong>{item.description}</strong>
     {#if item.onOffer}
-      <span class="badge-offer">On offer</span>
+      <mark class="badge-offer">On offer</mark>
     {/if}
     {#if item.organic}
-      <span class="badge-organic">Organic</span>
+      <mark class="badge-organic">Organic</mark>
     {/if}
     {#if !item.active}
       <small><em>(inactive)</em></small>
@@ -345,6 +345,15 @@
 </article>
 
 <style>
+  header {
+    display: block;
+  }
+
+  header :global(.badge-offer),
+  header :global(.badge-organic) {
+    margin-left: var(--space-2);
+  }
+
   .actions {
     display: flex;
     flex-wrap: wrap;

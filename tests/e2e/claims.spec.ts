@@ -99,7 +99,7 @@ test.describe('Claims', () => {
 
     // Should show at least one claim — log page state on failure for debugging.
     // Web-first assertion polls until the row appears, so no networkidle wait.
-    const rows = page.locator('tbody tr');
+    const rows = page.locator('tbody tr.claim-row');
     try {
       await expect(rows.first()).toBeVisible({ timeout: 15000 });
     } catch (e) {
@@ -121,7 +121,8 @@ test.describe('Claims', () => {
     // Wait for claims to load
     await expect(page.locator('[aria-busy="true"]')).toHaveCount(0, { timeout: 10000 });
 
-    const initialCount = await page.locator('tbody tr').count();
+    const claimRows = page.locator('tbody tr.claim-row');
+    const initialCount = await claimRows.count();
 
     if (initialCount > 0) {
       // Click Remove (ConfirmButton: first click shows confirm, second confirms)
@@ -130,11 +131,7 @@ test.describe('Claims', () => {
       await page.locator('button:has-text("Yes")').first().click();
 
       // Wait for removal to take effect
-      if (initialCount === 1) {
-        await expect(page.locator('tbody tr')).toHaveCount(0);
-      } else {
-        await expect(page.locator('tbody tr')).toHaveCount(initialCount - 1);
-      }
+      await expect(claimRows).toHaveCount(initialCount - 1);
     }
   });
 });

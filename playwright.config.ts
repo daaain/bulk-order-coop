@@ -8,11 +8,16 @@ export default defineConfig({
   fullyParallel: false,
   timeout: isCI ? 120_000 : 60_000,
   retries: isCI ? 1 : 0,
-  reporter: 'html',
+  reporter: [
+    ['list'],
+    ['html', { open: 'never' }],
+    ['json', { outputFile: 'playwright-report/results.json' }],
+  ],
   use: {
     baseURL: 'http://localhost:4173',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
   },
   projects: [
     { name: 'setup', testMatch: /auth\.setup\.ts/ },
