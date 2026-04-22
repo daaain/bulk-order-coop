@@ -41,7 +41,14 @@
       onOffer: onOfferOnly || undefined,
       brand: selectedBrand || undefined,
     });
-    return items;
+    // Stable sort: items with claims first, then original catalogue order.
+    const indexOf = new Map(allItems.map((it, i) => [it.productCode, i]));
+    return [...items].sort((a, b) => {
+      const aHasClaims = (orderItemMap.get(a.productCode)?.claims.length ?? 0) > 0 ? 0 : 1;
+      const bHasClaims = (orderItemMap.get(b.productCode)?.claims.length ?? 0) > 0 ? 0 : 1;
+      if (aHasClaims !== bHasClaims) return aHasClaims - bHasClaims;
+      return (indexOf.get(a.productCode) ?? 0) - (indexOf.get(b.productCode) ?? 0);
+    });
   });
 
   let brands = $derived(getUniqueBrands(allItems));
@@ -188,8 +195,7 @@
         {item}
         orderItem={orderItemMap.get(item.productCode)}
         currentMemberId={auth.user?.id ?? ''}
-        orderId={data.orderId}
-        {orderOpen}
+        canEdit={orderOpen}
         onaddtoorder={() => handleAddToOrder(item)}
         onclaim={handleClaim}
         onupdateclaim={handleUpdateClaim}

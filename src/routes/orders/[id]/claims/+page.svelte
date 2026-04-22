@@ -7,9 +7,9 @@
     removeClaim,
     removeItemFromOrder,
   } from '$lib/claims';
-  import { formatPrice, formatCaseSize, calculateCasePriceGross, calculateUnitPriceGross, getCaseIncrement } from '$lib/format';
+  import { formatPrice, getCaseIncrement } from '$lib/format';
   import ClaimForm from '$lib/components/ClaimForm.svelte';
-  import RoundingBar from '$lib/components/RoundingBar.svelte';
+  import ItemCard from '$lib/components/ItemCard.svelte';
   import ConfirmButton from '$lib/components/ConfirmButton.svelte';
   import type { MyClaim, EnrichedOrderItem } from '$shared/types';
   import type { LayoutData } from '../$types';
@@ -26,13 +26,7 @@
   let loading = $state(true);
   let error = $state('');
   let editingItemId = $state<string | null>(null);
-  let claimingItemId = $state<string | null>(null);
   let saving = $state(false);
-
-  // Organiser claim editing state
-  let editingClaimKey = $state<string | null>(null); // "itemId:memberId"
-  let claimingForItemId = $state<string | null>(null); // item where organiser is adding claim for another member
-  let selectedMemberId = $state('');
 
   let currentMemberId = $derived(auth.user?.id ?? '');
   let isOrganiser = $derived(
@@ -48,13 +42,6 @@
     '+': 'Can take more',
     '-': 'Can take less',
     '+-': 'Flexible',
-  };
-
-  const flexShortLabels: Record<string, string> = {
-    '*': '',
-    '+': '+',
-    '-': '-',
-    '+-': '±',
   };
 
   function isPackaged(unitsPerCase: number | null): boolean {
@@ -101,51 +88,49 @@
     }
   }
 
+  async function handleCreateClaim(
+    itemId: string,
+    amount: number,
+    flexibility: string,
+    memberId?: string,
+  ) {
+    try {
+      await createClaim(data.orderId, itemId, amount, flexibility, memberId);
+      await loadData();
+    } catch (err: unknown) {
+      error = (err as Error).message || 'Failed to save claim';
+    }
+  }
+
+  async function handleUpdateOrderItemClaim(
+    itemId: string,
+    amount: number,
+    flexibility: string,
+    memberId?: string,
+  ) {
+    try {
+      await updateClaim(data.orderId, itemId, amount, flexibility, memberId);
+      await loadData();
+    } catch (err: unknown) {
+      error = (err as Error).message || 'Failed to save claim';
+    }
+  }
+
+  async function handleRemoveOrderItemClaim(itemId: string, memberId?: string) {
+    try {
+      await removeClaim(data.orderId, itemId, memberId);
+      await loadData();
+    } catch (err: unknown) {
+      error = (err as Error).message || 'Failed to remove claim';
+    }
+  }
+
   async function handleRemoveItem(itemId: string) {
     try {
       await removeItemFromOrder(data.orderId, itemId);
       await loadData();
     } catch (err: unknown) {
       error = (err as Error).message || 'Failed to remove item';
-    }
-  }
-
-  async function handleOrderItemClaim(
-    oi: EnrichedOrderItem,
-    amount: number,
-    flexibility: string,
-    memberId?: string,
-  ) {
-    saving = true;
-    try {
-      const packaged = isPackaged(oi.catalogueItem.unitsPerCase);
-      const apiAmount = packaged ? toNatural(amount, oi.catalogueItem.packSize) : amount;
-      const targetId = memberId ?? currentMemberId;
-      const existingClaim = oi.claims.find((c) => c.memberId === targetId);
-      if (existingClaim) {
-        await updateClaim(data.orderId, oi.orderItem.id, apiAmount, flexibility, memberId);
-      } else {
-        await createClaim(data.orderId, oi.orderItem.id, apiAmount, flexibility, memberId);
-      }
-      claimingItemId = null;
-      editingClaimKey = null;
-      claimingForItemId = null;
-      selectedMemberId = '';
-      await loadData();
-    } catch (err: unknown) {
-      error = (err as Error).message || 'Failed to save claim';
-    } finally {
-      saving = false;
-    }
-  }
-
-  async function handleOrderItemRemoveClaim(itemId: string, memberId?: string) {
-    try {
-      await removeClaim(data.orderId, itemId, memberId);
-      editingClaimKey = null;
-      await loadData();
-    } catch (err: unknown) {
-      error = (err as Error).message || 'Failed to remove claim';
     }
   }
 
@@ -199,224 +184,20 @@
     <p>No items have been added to this order yet.</p>
   {:else}
     <div class="items-grid">
-    {#each orderItems as oi (oi.orderItem.id)}
-      {@const packaged = isPackaged(oi.catalogueItem.unitsPerCase)}
-      {@const unitPrice = calculateUnitPriceGross(
-        oi.catalogueItem.casePrice,
-        oi.catalogueItem.vatPerCase,
-        oi.catalogueItem.unitsPerCase,
-        oi.catalogueItem.packSize,
-        oi.catalogueItem.unit,
-      )}
-      {@const myClaim = oi.claims.find((c) => c.memberId === currentMemberId)}
-      <article>
-        <header>
-          <strong>{oi.catalogueItem.description}</strong>
-          {#if oi.catalogueItem.brand}
-            <small> — {oi.catalogueItem.brand}</small>
-          {/if}
-        </header>
-        <p>
-          {formatCaseSize(
-            oi.catalogueItem.unitsPerCase,
-            oi.catalogueItem.packSize,
-            oi.catalogueItem.unit,
-          )}
-          &middot; {formatPrice(calculateCasePriceGross(oi.catalogueItem.casePrice, oi.catalogueItem.vatPerCase))}/case &middot; {formatPrice(
-            unitPrice.price,
-          )}/{unitPrice.perUnit}
-        </p>
-        {#if oi.claims.length > 0}
-          <p>
-            <small>
-              {#each oi.claims as claim, i}
-                {#if i > 0},
-                {/if}
-                {#if isOrganiser && canEdit}
-                  <button
-                    class="claim-chip"
-                    onclick={() => {
-                      editingClaimKey = editingClaimKey === `${oi.orderItem.id}:${claim.memberId}`
-                        ? null
-                        : `${oi.orderItem.id}:${claim.memberId}`;
-                      claimingItemId = null;
-                      claimingForItemId = null;
-                    }}
-                  >
-                    <strong>{claim.memberInitials ?? '??'}</strong>: {formatClaimAmount(
-                      claim.amount,
-                      oi.catalogueItem.unitsPerCase,
-                      oi.catalogueItem.packSize,
-                      oi.catalogueItem.unit,
-                    )}{#if claim.flexibility && claim.flexibility !== '*'}{flexShortLabels[
-                        claim.flexibility
-                      ]}{/if}
-                  </button>
-                {:else}
-                  <strong>{claim.memberInitials ?? '??'}</strong>: {formatClaimAmount(
-                    claim.amount,
-                    oi.catalogueItem.unitsPerCase,
-                    oi.catalogueItem.packSize,
-                    oi.catalogueItem.unit,
-                  )}{#if claim.flexibility && claim.flexibility !== '*'}{flexShortLabels[
-                      claim.flexibility
-                    ]}{/if}
-                {/if}
-              {/each}
-            </small>
-          </p>
-
-          <!-- Organiser editing another member's claim -->
-          {#each oi.claims as claim}
-            {#if editingClaimKey === `${oi.orderItem.id}:${claim.memberId}`}
-              <div class="organiser-edit">
-                <small><strong>Editing {claim.memberName ?? claim.memberInitials ?? 'member'}'s claim</strong></small>
-                <ClaimForm
-                  unit={oi.catalogueItem.unit}
-                  {packaged}
-                  caseIncrement={getCaseIncrement(oi.catalogueItem.unitsPerCase, oi.catalogueItem.packSize)}
-                  initialAmount={packaged
-                    ? toPacks(claim.amount, oi.catalogueItem.packSize)
-                    : claim.amount}
-                  initialFlexibility={claim.flexibility ?? '*'}
-                  loading={saving}
-                  onsubmit={(amount, flexibility) =>
-                    handleOrderItemClaim(oi, amount, flexibility, claim.memberId)}
-                  oncancel={() => (editingClaimKey = null)}
-                />
-                <ConfirmButton
-                  label="Remove this claim"
-                  onclick={() => handleOrderItemRemoveClaim(oi.orderItem.id, claim.memberId)}
-                  class="outline secondary"
-                />
-              </div>
-            {/if}
-          {/each}
-        {:else}
-          <p><small>No claims yet</small></p>
-        {/if}
-        <RoundingBar
-          rounding={oi.rounding}
-          packSize={packaged ? oi.catalogueItem.packSize : undefined}
-          isPackaged={packaged}
+      {#each orderItems as oi (oi.orderItem.id)}
+        <ItemCard
+          item={oi.catalogueItem}
+          orderItem={oi}
+          {currentMemberId}
+          {canEdit}
+          {isOrganiser}
+          members={data.order.members}
+          onclaim={handleCreateClaim}
+          onupdateclaim={handleUpdateOrderItemClaim}
+          onremoveclaim={handleRemoveOrderItemClaim}
+          onremoveitem={handleRemoveItem}
         />
-
-        {#if canEdit}
-          {#if claimingItemId === oi.orderItem.id}
-            <ClaimForm
-              unit={oi.catalogueItem.unit}
-              {packaged}
-              caseIncrement={getCaseIncrement(oi.catalogueItem.unitsPerCase, oi.catalogueItem.packSize)}
-              initialAmount={myClaim
-                ? packaged
-                  ? toPacks(myClaim.amount, oi.catalogueItem.packSize)
-                  : myClaim.amount
-                : 0}
-              initialFlexibility={myClaim?.flexibility ?? '*'}
-              loading={saving}
-              onsubmit={(amount, flexibility) => handleOrderItemClaim(oi, amount, flexibility)}
-              oncancel={() => (claimingItemId = null)}
-            />
-          {:else if myClaim}
-            <div role="group">
-              <button class="outline" onclick={() => (claimingItemId = oi.orderItem.id)}>
-                Edit my claim ({formatClaimAmount(
-                  myClaim.amount,
-                  oi.catalogueItem.unitsPerCase,
-                  oi.catalogueItem.packSize,
-                  oi.catalogueItem.unit,
-                )})
-              </button>
-              <ConfirmButton
-                label="Remove"
-                onclick={() => handleOrderItemRemoveClaim(oi.orderItem.id)}
-                class="outline secondary"
-              />
-            </div>
-          {:else}
-            <div role="group">
-              <button class="outline" onclick={() => (claimingItemId = oi.orderItem.id)}>
-                Add claim
-              </button>
-              {#if oi.claims.length === 0}
-                <ConfirmButton
-                  label="✕"
-                  confirmLabel="Remove item?"
-                  onclick={() => handleRemoveItem(oi.orderItem.id)}
-                  class="outline secondary"
-                />
-              {/if}
-            </div>
-          {/if}
-
-          <!-- Organiser: claim on behalf of another member -->
-          {#if isOrganiser}
-            {#if claimingForItemId === oi.orderItem.id}
-              {@const claimedMemberIds = new Set(oi.claims.map((c) => c.memberId))}
-              {@const availableMembers = data.order.members.filter(
-                (m) => !claimedMemberIds.has(m.memberId),
-              )}
-              {#if availableMembers.length === 0}
-                <p class="claim-for-member"><small>All members have claims on this item.</small></p>
-                <button class="outline secondary" onclick={() => (claimingForItemId = null)}>
-                  Cancel
-                </button>
-              {:else}
-                <div class="organiser-edit claim-for-member">
-                  <label>
-                    Claim for member
-                    <select bind:value={selectedMemberId}>
-                      <option value="" disabled>Select member...</option>
-                      {#each availableMembers as m}
-                        <option value={m.memberId}>{m.name ?? m.initials ?? m.memberId}</option>
-                      {/each}
-                    </select>
-                  </label>
-                  {#if selectedMemberId}
-                    <ClaimForm
-                      unit={oi.catalogueItem.unit}
-                      {packaged}
-                      caseIncrement={getCaseIncrement(oi.catalogueItem.unitsPerCase, oi.catalogueItem.packSize)}
-                      initialAmount={0}
-                      initialFlexibility="*"
-                      loading={saving}
-                      onsubmit={(amount, flexibility) =>
-                        handleOrderItemClaim(oi, amount, flexibility, selectedMemberId)}
-                      oncancel={() => {
-                        claimingForItemId = null;
-                        selectedMemberId = '';
-                      }}
-                    />
-                  {:else}
-                    <button
-                      class="outline secondary"
-                      onclick={() => {
-                        claimingForItemId = null;
-                        selectedMemberId = '';
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  {/if}
-                </div>
-              {/if}
-            {:else}
-              <button
-                class="outline secondary small claim-for-member"
-                onclick={() => {
-                  claimingForItemId = oi.orderItem.id;
-                  editingClaimKey = null;
-                  claimingItemId = null;
-                  selectedMemberId = '';
-                }}
-              >
-                Claim for member
-              </button>
-            {/if}
-          {/if}
-        {/if}
-      </article>
-    {/each}
+      {/each}
     </div>
   {/if}
 
@@ -466,7 +247,10 @@
                     <ClaimForm
                       unit={mc.catalogueItem.unit}
                       {packaged}
-                      caseIncrement={getCaseIncrement(mc.catalogueItem.unitsPerCase, mc.catalogueItem.packSize)}
+                      caseIncrement={getCaseIncrement(
+                        mc.catalogueItem.unitsPerCase,
+                        mc.catalogueItem.packSize,
+                      )}
                       initialAmount={packaged
                         ? toPacks(mc.claim.amount, mc.catalogueItem.packSize)
                         : mc.claim.amount}
@@ -535,31 +319,7 @@
     }
   }
 
-  .items-grid article {
+  .items-grid :global(article) {
     margin-bottom: 0;
-  }
-
-  .claim-for-member {
-    margin-top: var(--space-3);
-  }
-
-  .claim-chip {
-    all: unset;
-    cursor: pointer;
-    padding: 0.1em 0.3em;
-    border-radius: 4px;
-    display: inline;
-  }
-
-  .claim-chip:hover {
-    background: var(--pico-primary-background);
-    color: var(--pico-primary-inverse);
-  }
-
-  .organiser-edit {
-    margin-top: var(--space-3);
-    padding: var(--space-3);
-    border: 1px solid var(--pico-muted-border-color);
-    border-radius: var(--pico-border-radius);
   }
 </style>
