@@ -29,6 +29,11 @@
   let error = $state('');
   let editingItemId = $state<string | null>(null);
   let saving = $state(false);
+  let incompleteOnly = $state(false);
+
+  let visibleOrderItems = $derived(
+    incompleteOnly ? orderItems.filter((oi) => oi.rounding.status !== 'ready') : orderItems,
+  );
 
   let currentMemberId = $derived(auth.user?.id ?? '');
   let isOrganiser = $derived(
@@ -211,13 +216,23 @@
   <p><mark>{error}</mark></p>
 {:else}
   <!-- Order Items section -->
-  <h2>Order Items</h2>
+  <div class="section-header">
+    <h2>Order Items</h2>
+    {#if orderItems.length > 0}
+      <label class="filter-toggle">
+        <input type="checkbox" role="switch" bind:checked={incompleteOnly} />
+        Incomplete only
+      </label>
+    {/if}
+  </div>
 
   {#if orderItems.length === 0}
     <p>No items have been added to this order yet.</p>
+  {:else if visibleOrderItems.length === 0}
+    <p>All items are ready to order.</p>
   {:else}
     <div class="items-grid">
-      {#each orderItems as oi (oi.orderItem.id)}
+      {#each visibleOrderItems as oi (oi.orderItem.id)}
         <ItemCard
           item={{ ...oi.catalogueItem, onOffer: onOfferCodes.has(oi.catalogueItem.productCode) }}
           orderItem={oi}
@@ -338,6 +353,26 @@
 {/if}
 
 <style>
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+  }
+
+  .filter-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    font-size: 0.9em;
+  }
+
+  .filter-toggle input {
+    margin: 0;
+  }
+
   .items-grid {
     display: grid;
     grid-template-columns: 1fr;
