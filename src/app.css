@@ -965,6 +965,7 @@ details > :last-child {
 
 /* --- Tabs / Order Navigation --- */
 .tab-nav {
+  position: relative;
   display: flex;
   gap: var(--space-1);
   box-shadow: inset 0 -2px 0 var(--border-subtle);
@@ -974,6 +975,31 @@ details > :last-child {
   -webkit-overflow-scrolling: touch;
 }
 
+.tab-nav::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  width: var(--indicator-width, 0);
+  transform: translateX(var(--indicator-left, 0));
+  background: var(--color-terracotta);
+  border-radius: 2px 2px 0 0;
+  pointer-events: none;
+}
+
+.tab-nav.indicator-ready::after {
+  transition:
+    transform var(--transition-slow),
+    width var(--transition-slow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-nav.indicator-ready::after {
+    transition: none;
+  }
+}
+
 .tab-nav a {
   font-size: var(--text-sm);
   font-weight: 600;
@@ -981,7 +1007,7 @@ details > :last-child {
   padding: var(--space-2) var(--space-4);
   text-decoration: none;
   white-space: nowrap;
-  transition: all var(--transition-fast);
+  transition: color var(--transition-fast);
 }
 
 .tab-nav a:hover {
@@ -992,7 +1018,6 @@ details > :last-child {
 .tab-nav a.active,
 .tab-nav a[aria-current='page'] {
   color: var(--color-terracotta);
-  box-shadow: inset 0 -2px 0 var(--color-terracotta);
 }
 
 /* --- Hero / Sign-in Page --- */
