@@ -216,7 +216,7 @@ describe('Reconciliation API', () => {
       expect(typeof body.allConfirmed).toBe('boolean');
     });
 
-    it('rejects when order is open', async () => {
+    it('returns an empty summary when order is open', async () => {
       const organiser = await seedMember('organiser@test.local', 'Organiser', 'ORG');
       const { catalogueKey } = await seedCatalogue();
 
@@ -233,9 +233,15 @@ describe('Reconciliation API', () => {
         'organiser@test.local',
       );
 
-      expect(res.status).toBe(400);
-      const body = (await res.json()) as { error: string };
-      expect(body.error).toMatch(/reconciling or complete/);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        items: unknown[];
+        memberSummaries: unknown[];
+        orderTotals: { net: number; vat: number; gross: number };
+      };
+      expect(body.items).toEqual([]);
+      expect(body.memberSummaries).toEqual([]);
+      expect(body.orderTotals).toEqual({ net: 0, vat: 0, gross: 0 });
     });
   });
 

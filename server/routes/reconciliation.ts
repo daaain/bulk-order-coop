@@ -147,10 +147,6 @@ app.get('/:id/reconciliation', async (c) => {
     return c.json({ error: 'Order not found' }, 404);
   }
 
-  if (order.status !== 'reconciling' && order.status !== 'complete') {
-    return c.json({ error: 'Order must be reconciling or complete' }, 400);
-  }
-
   // 1. Get all order items (with product snapshots)
   const items = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
 

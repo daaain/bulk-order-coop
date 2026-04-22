@@ -14,6 +14,7 @@
   } from '$lib/reconciliation';
   import { loadInvoiceFromFile } from '$lib/invoice-loader';
   import { matchInvoiceToOrder } from '$shared/invoice-matching';
+  import { formatInfinityOrderCsv } from '$shared/infinity-order';
   import type {
     InvoiceMatchResult,
     DeliveryUpdate,
@@ -25,6 +26,7 @@
     ReconciliationItem,
     DeliveryStatus,
     MemberCostSummary,
+    RoundingStatus,
   } from '$shared/types';
 
   let { data }: { data: LayoutData } = $props();
@@ -43,12 +45,15 @@
   let parsingInvoice = $state(false);
   let applyingInvoice = $state(false);
   let invoiceError = $state('');
+  let infinityCopied = $state(false);
 
   const isOrganiser = $derived(
     data.order.members.some((m) => m.memberId === auth.user?.id && m.role === 'organiser'),
   );
 
-  const canView = $derived(data.order.status === 'reconciling' || data.order.status === 'complete');
+  const isReconciling = $derived(
+    data.order.status === 'reconciling' || data.order.status === 'complete',
+  );
 
   const isReadOnly = $derived(data.order.status === 'complete');
 
@@ -71,6 +76,63 @@
     partial: 'var(--delivery-partial-bg)',
     different_price: 'var(--delivery-partial-bg)',
   };
+
+  const ROUNDING_STATUS_ORDER: RoundingStatus[] = ['ready', 'nearly', 'needs_more', 'over'];
+  const roundingStatusLabels: Record<RoundingStatus, string> = {
+    ready: 'Ready to order',
+    nearly: 'Nearly there',
+    needs_more: 'Needs more takers',
+    over: 'Over — flexible members can reduce',
+  };
+
+  function itemGross(item: ReconciliationItem): number {
+    const { casePrice, vatPerCase } = item.catalogueItem;
+    return (casePrice + vatPerCase) * item.rounding.casesNeeded;
+  }
+
+  type OrderSummaryGroup = {
+    status: RoundingStatus;
+    items: ReconciliationItem[];
+    subtotal: number;
+  };
+
+  const summaryItems = $derived<ReconciliationItem[]>(
+    recon ? recon.items.filter((i) => i.rounding.casesNeeded > 0) : [],
+  );
+
+  const summaryGroups = $derived.by<OrderSummaryGroup[]>(() => {
+    const buckets = new Map<RoundingStatus, ReconciliationItem[]>();
+    for (const item of summaryItems) {
+      const arr = buckets.get(item.rounding.status) ?? [];
+      arr.push(item);
+      buckets.set(item.rounding.status, arr);
+    }
+    return ROUNDING_STATUS_ORDER.filter((s) => buckets.has(s)).map((status) => {
+      const items = buckets.get(status)!;
+      const subtotal = items.reduce((sum, i) => sum + itemGross(i), 0);
+      return { status, items, subtotal };
+    });
+  });
+
+  const summaryTotal = $derived(summaryItems.reduce((sum, i) => sum + itemGross(i), 0));
+
+  async function copyInfinityOrder() {
+    if (!recon) return;
+    const lines = recon.items
+      .filter((i) => i.rounding.status === 'ready')
+      .map((i) => ({
+        productCode: i.orderItem.productCode,
+        cases: i.rounding.casesNeeded,
+      }));
+    const csv = formatInfinityOrderCsv(lines);
+    try {
+      await navigator.clipboard.writeText(csv);
+      infinityCopied = true;
+      setTimeout(() => (infinityCopied = false), 2000);
+    } catch {
+      // Clipboard API unavailable (non-secure context, etc.)
+    }
+  }
 
   let debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -266,7 +328,7 @@
   }
 
   $effect(() => {
-    if (data.orderId && canView) {
+    if (data.orderId) {
       untrack(() => loadReconciliation());
     }
   });
@@ -278,14 +340,7 @@
 
 <h1 class="animate-in">Reconciliation</h1>
 
-{#if !canView}
-  <section>
-    <p>
-      This order is not yet in reconciliation. The organiser needs to get the invoice and upload it
-      first.
-    </p>
-  </section>
-{:else if loading}
+{#if loading}
   <p aria-busy="true">Loading reconciliation data...</p>
 {:else if error && !recon}
   <p><mark>{error}</mark></p>
@@ -293,6 +348,71 @@
   {#if error}
     <p><mark>{error}</mark></p>
   {/if}
+
+  {#if !isReadOnly}
+    <!-- Order summary (pre-finalisation) -->
+    <section>
+      <hgroup>
+        <h2>Order summary</h2>
+        <p>The full order to place with Infinity. Only complete-case items are copied.</p>
+      </hgroup>
+
+      <div class="action-bar">
+        <button onclick={copyInfinityOrder} data-testid="copy-infinity">
+          {infinityCopied ? 'Copied!' : 'Copy for Infinity'}
+        </button>
+      </div>
+
+      {#if summaryItems.length === 0}
+        <p>Nothing to order yet — no items have reached a full case.</p>
+      {:else}
+        <figure>
+          <table>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Cases</th>
+                <th>Claimed / case total</th>
+                <th>Est. cost</th>
+              </tr>
+            </thead>
+            {#each summaryGroups as group (group.status)}
+              <tbody class="summary-group status-{group.status}">
+                <tr class="group-header">
+                  <th colspan="4">{roundingStatusLabels[group.status]}</th>
+                </tr>
+                {#each group.items as i (i.orderItem.id)}
+                  <tr class="summary-row">
+                    <td>{i.catalogueItem.description}</td>
+                    <td>{i.rounding.casesNeeded}</td>
+                    <td>
+                      {i.rounding.totalClaimed}{i.catalogueItem.unit}
+                      / {i.rounding.casesNeeded * i.rounding.caseSize}{i.catalogueItem.unit}
+                    </td>
+                    <td>{formatPrice(itemGross(i))}</td>
+                  </tr>
+                {/each}
+                <tr class="group-subtotal">
+                  <td colspan="2"></td>
+                  <td><strong>Subtotal</strong></td>
+                  <td>{formatPrice(group.subtotal)}</td>
+                </tr>
+              </tbody>
+            {/each}
+            <tfoot>
+              <tr>
+                <td colspan="2"></td>
+                <td><strong>Total</strong></td>
+                <td><strong>{formatPrice(summaryTotal)}</strong></td>
+              </tr>
+            </tfoot>
+          </table>
+        </figure>
+      {/if}
+    </section>
+  {/if}
+
+  {#if isReconciling}
   <!-- Delivery status table -->
   <section>
     <hgroup>
@@ -648,6 +768,7 @@
       </section>
     {/if}
   {/if}
+  {/if}
 {/if}
 
 <style>
@@ -688,5 +809,36 @@
   .invoice-result {
     margin-top: 1rem;
     padding: 1rem;
+  }
+
+  .summary-group {
+    --bar-colour: var(--text-muted);
+  }
+  .summary-group.status-ready {
+    --bar-colour: var(--rounding-ready);
+  }
+  .summary-group.status-nearly {
+    --bar-colour: var(--rounding-nearly);
+  }
+  .summary-group.status-needs_more {
+    --bar-colour: var(--rounding-needs-more);
+  }
+  .summary-group.status-over {
+    --bar-colour: var(--rounding-over);
+  }
+
+  .summary-group .group-header th {
+    color: var(--bar-colour);
+    border-bottom: 2px solid var(--bar-colour);
+    padding-top: var(--space-3);
+  }
+
+  .summary-group .summary-row td:first-child {
+    border-left: 3px solid var(--bar-colour);
+  }
+
+  .summary-group .group-subtotal td {
+    border-top: 1px solid var(--bar-colour);
+    color: var(--bar-colour);
   }
 </style>
