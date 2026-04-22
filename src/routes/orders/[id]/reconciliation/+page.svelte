@@ -515,9 +515,7 @@
                   <th>Item</th>
                   <th>Claimed</th>
                   <th>Allocated</th>
-                  <th>Net</th>
-                  <th>VAT</th>
-                  <th>Gross</th>
+                  <th>Amount</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -536,8 +534,6 @@
                         </small>
                       {/if}
                     </td>
-                    <td>{formatPrice(alloc.net)}</td>
-                    <td>{formatPrice(alloc.vat)}</td>
                     <td>{formatPrice(alloc.gross)}</td>
                     <td>
                       {#if alloc.confirmed}
@@ -568,8 +564,6 @@
               <tfoot>
                 <tr>
                   <td colspan="3"></td>
-                  <td><strong>{formatPrice(summary.totals.net)}</strong></td>
-                  <td><strong>{formatPrice(summary.totals.vat)}</strong></td>
                   <td><strong>{formatPrice(summary.totals.gross)}</strong></td>
                   <td></td>
                 </tr>

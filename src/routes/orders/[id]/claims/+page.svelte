@@ -11,7 +11,7 @@
   import ClaimForm from '$lib/components/ClaimForm.svelte';
   import ItemCard from '$lib/components/ItemCard.svelte';
   import ConfirmButton from '$lib/components/ConfirmButton.svelte';
-  import type { MyClaim, EnrichedOrderItem } from '$shared/types';
+  import type { MyClaim, EnrichedOrderItem, RoundingStatus } from '$shared/types';
   import type { LayoutData } from '../$types';
   import { useAuth } from '$lib/auth.svelte';
   import { untrack } from 'svelte';
@@ -43,6 +43,35 @@
     '-': 'Can take less',
     '+-': 'Flexible',
   };
+
+  const STATUS_ORDER: RoundingStatus[] = ['ready', 'nearly', 'needs_more', 'over'];
+  const statusLabels: Record<RoundingStatus, string> = {
+    ready: 'Ready to order',
+    nearly: 'Nearly there',
+    needs_more: 'Needs more takers',
+    over: 'Over — flexible members can reduce',
+  };
+
+  type ClaimGroup = { status: RoundingStatus; claims: MyClaim[]; subtotal: number };
+
+  let statusByOrderItem = $derived(
+    new Map(orderItems.map((oi) => [oi.orderItem.id, oi.rounding.status])),
+  );
+
+  let groupedClaims = $derived.by<ClaimGroup[]>(() => {
+    const buckets = new Map<RoundingStatus, MyClaim[]>();
+    for (const mc of claims) {
+      const status = statusByOrderItem.get(mc.claim.orderItemId) ?? 'needs_more';
+      const arr = buckets.get(status) ?? [];
+      arr.push(mc);
+      buckets.set(status, arr);
+    }
+    return STATUS_ORDER.filter((s) => buckets.has(s)).map((status) => {
+      const groupClaims = buckets.get(status)!;
+      const subtotal = groupClaims.reduce((sum, mc) => sum + mc.estimatedCost.gross, 0);
+      return { status, claims: groupClaims, subtotal };
+    });
+  });
 
   function isPackaged(unitsPerCase: number | null): boolean {
     return unitsPerCase != null && unitsPerCase > 0;
@@ -226,73 +255,72 @@
             {/if}
           </tr>
         </thead>
-        <tbody>
-          {#each claims as mc (mc.claim.id)}
-            {@const packaged = isPackaged(mc.catalogueItem.unitsPerCase)}
-            <tr>
-              <td>{mc.catalogueItem.description}</td>
-              <td>
-                {formatClaimAmount(
-                  mc.claim.amount,
-                  mc.catalogueItem.unitsPerCase,
-                  mc.catalogueItem.packSize,
-                  mc.catalogueItem.unit,
-                )}
-              </td>
-              <td>{flexLabels[mc.claim.flexibility ?? '*'] ?? mc.claim.flexibility}</td>
-              <td>{formatPrice(mc.estimatedCost.gross)}</td>
-              {#if canEdit}
-                <td>
-                  {#if editingItemId === mc.claim.orderItemId}
-                    <ClaimForm
-                      unit={mc.catalogueItem.unit}
-                      {packaged}
-                      caseIncrement={getCaseIncrement(
-                        mc.catalogueItem.unitsPerCase,
-                        mc.catalogueItem.packSize,
-                      )}
-                      initialAmount={packaged
-                        ? toPacks(mc.claim.amount, mc.catalogueItem.packSize)
-                        : mc.claim.amount}
-                      initialFlexibility={mc.claim.flexibility ?? '*'}
-                      loading={saving}
-                      onsubmit={(amount, flexibility) =>
-                        handleMyClaimUpdate(mc, amount, flexibility)}
-                      oncancel={() => (editingItemId = null)}
-                    />
-                  {:else}
-                    <div role="group">
-                      <button
-                        class="outline"
-                        onclick={() => (editingItemId = mc.claim.orderItemId)}
-                      >
-                        Edit
-                      </button>
-                      <ConfirmButton
-                        label="Remove"
-                        onclick={() => handleMyClaimRemove(mc.claim.orderItemId)}
-                        class="outline secondary"
-                      />
-                    </div>
-                  {/if}
-                </td>
-              {/if}
+        {#each groupedClaims as group (group.status)}
+          <tbody class="claims-group status-{group.status}">
+            <tr class="group-header">
+              <th colspan={canEdit ? 5 : 4}>{statusLabels[group.status]}</th>
             </tr>
-          {/each}
-        </tbody>
+            {#each group.claims as mc (mc.claim.id)}
+              {@const packaged = isPackaged(mc.catalogueItem.unitsPerCase)}
+              <tr class="claim-row">
+                <td>{mc.catalogueItem.description}</td>
+                <td>
+                  {formatClaimAmount(
+                    mc.claim.amount,
+                    mc.catalogueItem.unitsPerCase,
+                    mc.catalogueItem.packSize,
+                    mc.catalogueItem.unit,
+                  )}
+                </td>
+                <td>{flexLabels[mc.claim.flexibility ?? '*'] ?? mc.claim.flexibility}</td>
+                <td>{formatPrice(mc.estimatedCost.gross)}</td>
+                {#if canEdit}
+                  <td>
+                    {#if editingItemId === mc.claim.orderItemId}
+                      <ClaimForm
+                        unit={mc.catalogueItem.unit}
+                        {packaged}
+                        caseIncrement={getCaseIncrement(
+                          mc.catalogueItem.unitsPerCase,
+                          mc.catalogueItem.packSize,
+                        )}
+                        initialAmount={packaged
+                          ? toPacks(mc.claim.amount, mc.catalogueItem.packSize)
+                          : mc.claim.amount}
+                        initialFlexibility={mc.claim.flexibility ?? '*'}
+                        loading={saving}
+                        onsubmit={(amount, flexibility) =>
+                          handleMyClaimUpdate(mc, amount, flexibility)}
+                        oncancel={() => (editingItemId = null)}
+                      />
+                    {:else}
+                      <div role="group">
+                        <button
+                          class="outline"
+                          onclick={() => (editingItemId = mc.claim.orderItemId)}
+                        >
+                          Edit
+                        </button>
+                        <ConfirmButton
+                          label="Remove"
+                          onclick={() => handleMyClaimRemove(mc.claim.orderItemId)}
+                          class="outline secondary"
+                        />
+                      </div>
+                    {/if}
+                  </td>
+                {/if}
+              </tr>
+            {/each}
+            <tr class="group-subtotal">
+              <td colspan="2"></td>
+              <td><strong>Subtotal</strong></td>
+              <td>{formatPrice(group.subtotal)}</td>
+              {#if canEdit}<td></td>{/if}
+            </tr>
+          </tbody>
+        {/each}
         <tfoot>
-          <tr>
-            <td colspan="2"></td>
-            <td><strong>Net</strong></td>
-            <td>{formatPrice(totals.net)}</td>
-            {#if canEdit}<td></td>{/if}
-          </tr>
-          <tr>
-            <td colspan="2"></td>
-            <td><strong>VAT</strong></td>
-            <td>{formatPrice(totals.vat)}</td>
-            {#if canEdit}<td></td>{/if}
-          </tr>
           <tr>
             <td colspan="2"></td>
             <td><strong>Total</strong></td>
@@ -321,5 +349,36 @@
 
   .items-grid :global(article) {
     margin-bottom: 0;
+  }
+
+  .claims-group {
+    --bar-colour: var(--text-muted);
+  }
+  .claims-group.status-ready {
+    --bar-colour: var(--rounding-ready);
+  }
+  .claims-group.status-nearly {
+    --bar-colour: var(--rounding-nearly);
+  }
+  .claims-group.status-needs_more {
+    --bar-colour: var(--rounding-needs-more);
+  }
+  .claims-group.status-over {
+    --bar-colour: var(--rounding-over);
+  }
+
+  .claims-group .group-header th {
+    color: var(--bar-colour);
+    border-bottom: 2px solid var(--bar-colour);
+    padding-top: var(--space-3);
+  }
+
+  .claims-group .claim-row td:first-child {
+    border-left: 3px solid var(--bar-colour);
+  }
+
+  .claims-group .group-subtotal td {
+    border-top: 1px solid var(--bar-colour);
+    color: var(--bar-colour);
   }
 </style>
