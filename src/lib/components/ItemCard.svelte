@@ -23,6 +23,7 @@
     onupdateclaim,
     onremoveclaim,
     onremoveitem,
+    onswap,
   }: {
     item: CatalogueItem;
     orderItem?: EnrichedOrderItem;
@@ -40,6 +41,7 @@
     ) => void;
     onremoveclaim?: (itemId: string, memberId?: string) => void;
     onremoveitem?: (itemId: string) => void;
+    onswap?: (itemId: string) => void;
   } = $props();
 
   let showClaimForm = $state(false);
@@ -122,6 +124,11 @@
   function handleRemoveItem() {
     if (!orderItem) return;
     onremoveitem?.(orderItem.orderItem.id);
+  }
+
+  function handleSwap() {
+    if (!orderItem) return;
+    onswap?.(orderItem.orderItem.id);
   }
 
   function toggleEditOther(memberId: string) {
@@ -320,6 +327,9 @@
             >
               Claim for member
             </button>
+          {/if}
+          {#if onswap}
+            <button class="outline secondary" onclick={handleSwap}> Swap </button>
           {/if}
         </div>
       {/if}

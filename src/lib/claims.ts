@@ -24,6 +24,18 @@ export function removeItemFromOrder(
   return apiFetch(`/orders/${orderId}/items/${itemId}`, { method: 'DELETE' });
 }
 
+export function swapOrderItem(
+  orderId: string,
+  itemId: string,
+  target: ParsedCatalogueItem,
+  notes?: string,
+): Promise<EnrichedOrderItem> {
+  return apiFetch(`/orders/${orderId}/items/${itemId}/swap`, {
+    method: 'PUT',
+    body: JSON.stringify({ ...target, notes }),
+  });
+}
+
 export function createClaim(
   orderId: string,
   itemId: string,

@@ -5,9 +5,10 @@ import { nanoid } from 'nanoid';
 import type { Bindings } from '../index';
 import type { JwtPayload } from '../services/jwt';
 import { requireAuth } from '../middleware/auth';
-import { orders, orderMembers, orderItems, claims, members } from '../../db/schema';
+import { orders, orderMembers, orderItems, claims, members, deliveryItems, allocations } from '../../db/schema';
 import { validateAddItem } from '../services/items';
 import { calculateRounding } from '../../shared/rounding';
+import { mergeClaimPair, type Flexibility } from '../../shared/swap';
 import type { ClaimWithMember, EnrichedOrderItem, CatalogueItem } from '../../shared/types';
 
 /** Construct a CatalogueItem from an order_items row */
@@ -208,6 +209,162 @@ app.get('/:id/items', async (c) => {
       rounding,
     };
   });
+
+  return c.json(result);
+});
+
+// PUT /:id/items/:itemId/swap — Replace the product snapshot on an order item,
+// keeping existing claims. Merges into an existing row if the target productCode
+// is already on the order. Resets delivery/allocation state for the survivor.
+app.put('/:id/items/:itemId/swap', async (c) => {
+  const db = drizzle(c.env.DB);
+  const orderId = c.req.param('id');
+  const itemId = c.req.param('itemId');
+  const memberId = c.get('memberId');
+  const body = await c.req.json();
+
+  const [membership] = await db
+    .select()
+    .from(orderMembers)
+    .where(and(eq(orderMembers.orderId, orderId), eq(orderMembers.memberId, memberId)));
+
+  if (!membership) {
+    return c.json({ error: 'You are not a member of this order' }, 403);
+  }
+
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+  if (!order) {
+    return c.json({ error: 'Order not found' }, 404);
+  }
+
+  const [current] = await db
+    .select()
+    .from(orderItems)
+    .where(and(eq(orderItems.id, itemId), eq(orderItems.orderId, orderId)));
+
+  if (!current) {
+    return c.json({ error: 'Item not found' }, 404);
+  }
+
+  const validated = validateAddItem(body);
+  if ('error' in validated) {
+    return c.json({ error: validated.error }, 400);
+  }
+
+  const [targetExisting] = await db
+    .select()
+    .from(orderItems)
+    .where(
+      and(eq(orderItems.orderId, orderId), eq(orderItems.productCode, validated.productCode)),
+    );
+
+  const merging = targetExisting && targetExisting.id !== itemId;
+  const now = Math.floor(Date.now() / 1000);
+
+  if (merging) {
+    const sourceClaims = await db.select().from(claims).where(eq(claims.orderItemId, itemId));
+    const targetClaims = await db
+      .select()
+      .from(claims)
+      .where(eq(claims.orderItemId, targetExisting.id));
+
+    const targetClaimByMember = new Map(targetClaims.map((cl) => [cl.memberId, cl]));
+
+    for (const sc of sourceClaims) {
+      const existing = targetClaimByMember.get(sc.memberId);
+      if (existing) {
+        const merged = mergeClaimPair(
+          { amount: existing.amount, flexibility: existing.flexibility as Flexibility | null },
+          { amount: sc.amount, flexibility: sc.flexibility as Flexibility | null },
+        );
+        await db
+          .update(claims)
+          .set({ amount: merged.amount, flexibility: merged.flexibility, updatedAt: now })
+          .where(eq(claims.id, existing.id));
+        await db.delete(claims).where(eq(claims.id, sc.id));
+      } else {
+        await db
+          .update(claims)
+          .set({ orderItemId: targetExisting.id, updatedAt: now })
+          .where(eq(claims.id, sc.id));
+      }
+    }
+
+    await db.delete(allocations).where(eq(allocations.orderItemId, itemId));
+    await db.delete(deliveryItems).where(eq(deliveryItems.orderItemId, itemId));
+    await db.delete(orderItems).where(eq(orderItems.id, itemId));
+
+    await db.delete(allocations).where(eq(allocations.orderItemId, targetExisting.id));
+    await db.delete(deliveryItems).where(eq(deliveryItems.orderItemId, targetExisting.id));
+  } else {
+    await db
+      .update(orderItems)
+      .set({
+        productCode: validated.productCode,
+        description: validated.description,
+        brand: validated.brand,
+        organic: validated.organic ? 1 : 0,
+        casePrice: validated.casePrice,
+        vatRate: validated.vatRate,
+        vatPerCase: validated.vatPerCase,
+        unitsPerCase: validated.unitsPerCase,
+        packSize: validated.packSize,
+        unit: validated.unit,
+        rrp: validated.rrp,
+        barcode: validated.barcode,
+        notes: validated.notes ?? null,
+      })
+      .where(eq(orderItems.id, itemId));
+
+    await db.delete(allocations).where(eq(allocations.orderItemId, itemId));
+    await db.delete(deliveryItems).where(eq(deliveryItems.orderItemId, itemId));
+  }
+
+  const survivingId = merging ? targetExisting.id : itemId;
+  const [item] = await db.select().from(orderItems).where(eq(orderItems.id, survivingId));
+  const claimRows = await db
+    .select({
+      id: claims.id,
+      orderItemId: claims.orderItemId,
+      memberId: claims.memberId,
+      amount: claims.amount,
+      flexibility: claims.flexibility,
+      createdAt: claims.createdAt,
+      updatedAt: claims.updatedAt,
+      memberName: members.name,
+      memberInitials: members.initials,
+    })
+    .from(claims)
+    .innerJoin(members, eq(claims.memberId, members.id))
+    .where(eq(claims.orderItemId, survivingId));
+
+  const rounding = calculateRounding(claimRows, item.unitsPerCase, item.packSize);
+  const ci = catalogueItemFromOrderItem(item);
+
+  const result: EnrichedOrderItem = {
+    orderItem: {
+      id: item.id,
+      orderId: item.orderId,
+      productCode: item.productCode,
+      description: item.description,
+      brand: item.brand,
+      organic: Boolean(item.organic),
+      casePrice: item.casePrice,
+      vatRate: item.vatRate,
+      vatPerCase: item.vatPerCase,
+      unitsPerCase: item.unitsPerCase,
+      packSize: item.packSize,
+      unit: item.unit,
+      rrp: item.rrp,
+      barcode: item.barcode,
+      addedBy: item.addedBy,
+      addedAt: item.addedAt,
+      notes: item.notes,
+    },
+    catalogueItem: ci,
+    claims: claimRows,
+    rounding,
+  };
 
   return c.json(result);
 });

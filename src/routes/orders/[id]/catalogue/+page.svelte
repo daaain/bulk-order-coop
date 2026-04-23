@@ -200,6 +200,7 @@
         onclaim={handleClaim}
         onupdateclaim={handleUpdateClaim}
         onremoveclaim={handleRemoveClaim}
+        onswap={(itemId) => goto(`/orders/${data.orderId}/swap/${itemId}`)}
       />
     {/each}
   </section>

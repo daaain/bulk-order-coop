@@ -16,6 +16,7 @@
   import type { LayoutData } from '../$types';
   import { useAuth } from '$lib/auth.svelte';
   import { untrack } from 'svelte';
+  import { goto } from '$app/navigation';
 
   let { data }: { data: LayoutData } = $props();
 
@@ -244,6 +245,7 @@
           onupdateclaim={handleUpdateOrderItemClaim}
           onremoveclaim={handleRemoveOrderItemClaim}
           onremoveitem={handleRemoveItem}
+          onswap={(itemId) => goto(`/orders/${data.orderId}/swap/${itemId}`)}
         />
       {/each}
     </div>

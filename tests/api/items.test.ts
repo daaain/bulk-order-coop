@@ -7,8 +7,20 @@ import {
   seedMember,
   seedCatalogue,
   seedOrderItem,
+  getDb,
   TEST_ITEMS,
 } from './helpers';
+
+async function addOrderMember(orderId: string, memberId: string, role: 'member' | 'organiser' = 'member') {
+  const db = getDb();
+  const now = Math.floor(Date.now() / 1000);
+  await db
+    .prepare(
+      'INSERT INTO order_members (order_id, member_id, role, joined_at) VALUES (?, ?, ?, ?)',
+    )
+    .bind(orderId, memberId, role, now)
+    .run();
+}
 
 describe('Item routes', () => {
   beforeAll(setupMiniflare);
@@ -146,6 +158,289 @@ describe('Item routes', () => {
       expect(body[0].claims).toBeDefined();
       expect(body[0].rounding).toBeDefined();
       expect(body[0].rounding.totalClaimed).toBe(0);
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // PUT /orders/:id/items/:itemId/swap
+  // ----------------------------------------------------------------
+  describe('PUT /orders/:id/items/:itemId/swap', () => {
+    it('swaps the snapshot on an item with no claims', async () => {
+      const { member, orderId } = await seedOrder();
+      const { id: itemId } = await seedOrderItem(orderId, member.id, 'alice@test.local', '1001');
+
+      const res = await authFetch(
+        `/orders/${orderId}/items/${itemId}/swap`,
+        member.id,
+        'alice@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(TEST_ITEMS['1002']),
+        },
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        orderItem: { id: string; productCode: string; description: string };
+        claims: unknown[];
+      };
+      expect(body.orderItem.id).toBe(itemId);
+      expect(body.orderItem.productCode).toBe('1002');
+      expect(body.orderItem.description).toBe('Black Rice - Italy');
+      expect(body.claims).toEqual([]);
+    });
+
+    it('preserves claims across a straight swap', async () => {
+      const { member, orderId } = await seedOrder();
+      const { id: itemId } = await seedOrderItem(orderId, member.id, 'alice@test.local', '1001');
+
+      await authFetch(`/orders/${orderId}/items/${itemId}/claims`, member.id, 'alice@test.local', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: 1000, flexibility: '+' }),
+      });
+
+      const res = await authFetch(
+        `/orders/${orderId}/items/${itemId}/swap`,
+        member.id,
+        'alice@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(TEST_ITEMS['1002']),
+        },
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        orderItem: { id: string; productCode: string };
+        claims: Array<{ memberId: string; amount: number; flexibility: string | null }>;
+      };
+      expect(body.orderItem.id).toBe(itemId);
+      expect(body.orderItem.productCode).toBe('1002');
+      expect(body.claims).toHaveLength(1);
+      expect(body.claims[0].memberId).toBe(member.id);
+      expect(body.claims[0].amount).toBe(1000);
+      expect(body.claims[0].flexibility).toBe('+');
+    });
+
+    it('merges into an existing target item with non-overlapping members', async () => {
+      const { member, orderId } = await seedOrder();
+      // Seed a second member and add them to the order
+      const bob = await seedMember('bob@test.local', 'Bob', 'BO');
+      await addOrderMember(orderId, bob.id);
+
+      const { id: sourceId } = await seedOrderItem(orderId, member.id, 'alice@test.local', '1001');
+      const { id: targetId } = await seedOrderItem(orderId, member.id, 'alice@test.local', '1002');
+
+      // Alice claims on source
+      await authFetch(`/orders/${orderId}/items/${sourceId}/claims`, member.id, 'alice@test.local', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: 500, flexibility: '+' }),
+      });
+      // Bob claims on target
+      await authFetch(`/orders/${orderId}/items/${targetId}/claims`, bob.id, 'bob@test.local', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: 1000, flexibility: '-' }),
+      });
+
+      // Swap source → target's productCode ⇒ merge
+      const res = await authFetch(
+        `/orders/${orderId}/items/${sourceId}/swap`,
+        member.id,
+        'alice@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(TEST_ITEMS['1002']),
+        },
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        orderItem: { id: string; productCode: string };
+        claims: Array<{ memberId: string; amount: number; flexibility: string | null }>;
+      };
+      expect(body.orderItem.id).toBe(targetId);
+      expect(body.orderItem.productCode).toBe('1002');
+      expect(body.claims).toHaveLength(2);
+
+      const listRes = await authFetch(`/orders/${orderId}/items`, member.id, 'alice@test.local');
+      const items = (await listRes.json()) as Array<{ orderItem: { id: string } }>;
+      expect(items).toHaveLength(1);
+      expect(items[0].orderItem.id).toBe(targetId);
+    });
+
+    it('sums claims and keeps flexibility when merging and both sides agree', async () => {
+      const { member, orderId } = await seedOrder();
+      const { id: sourceId } = await seedOrderItem(orderId, member.id, 'alice@test.local', '1001');
+      const { id: targetId } = await seedOrderItem(orderId, member.id, 'alice@test.local', '1002');
+
+      await authFetch(`/orders/${orderId}/items/${sourceId}/claims`, member.id, 'alice@test.local', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: 500, flexibility: '+' }),
+      });
+      await authFetch(`/orders/${orderId}/items/${targetId}/claims`, member.id, 'alice@test.local', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: 1000, flexibility: '+' }),
+      });
+
+      const res = await authFetch(
+        `/orders/${orderId}/items/${sourceId}/swap`,
+        member.id,
+        'alice@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(TEST_ITEMS['1002']),
+        },
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        orderItem: { id: string };
+        claims: Array<{ memberId: string; amount: number; flexibility: string | null }>;
+      };
+      expect(body.orderItem.id).toBe(targetId);
+      expect(body.claims).toHaveLength(1);
+      expect(body.claims[0].amount).toBe(1500);
+      expect(body.claims[0].flexibility).toBe('+');
+    });
+
+    it('collapses flexibility to * when merging and sides disagree', async () => {
+      const { member, orderId } = await seedOrder();
+      const { id: sourceId } = await seedOrderItem(orderId, member.id, 'alice@test.local', '1001');
+      const { id: targetId } = await seedOrderItem(orderId, member.id, 'alice@test.local', '1002');
+
+      await authFetch(`/orders/${orderId}/items/${sourceId}/claims`, member.id, 'alice@test.local', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: 500, flexibility: '+' }),
+      });
+      await authFetch(`/orders/${orderId}/items/${targetId}/claims`, member.id, 'alice@test.local', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: 1000, flexibility: '-' }),
+      });
+
+      const res = await authFetch(
+        `/orders/${orderId}/items/${sourceId}/swap`,
+        member.id,
+        'alice@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(TEST_ITEMS['1002']),
+        },
+      );
+
+      const body = (await res.json()) as {
+        claims: Array<{ amount: number; flexibility: string | null }>;
+      };
+      expect(body.claims).toHaveLength(1);
+      expect(body.claims[0].amount).toBe(1500);
+      expect(body.claims[0].flexibility).toBe('*');
+    });
+
+    it('works while the order is reconciling', async () => {
+      const { member, orderId } = await seedOrder();
+      const { id: itemId } = await seedOrderItem(orderId, member.id, 'alice@test.local', '1001');
+
+      await authFetch(`/orders/${orderId}/items/${itemId}/claims`, member.id, 'alice@test.local', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: 500 }),
+      });
+
+      // Advance order through its lifecycle
+      await authFetch(`/orders/${orderId}`, member.id, 'alice@test.local', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'closed' }),
+      });
+      await authFetch(`/orders/${orderId}`, member.id, 'alice@test.local', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'reconciling' }),
+      });
+
+      const res = await authFetch(
+        `/orders/${orderId}/items/${itemId}/swap`,
+        member.id,
+        'alice@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(TEST_ITEMS['1002']),
+        },
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        orderItem: { productCode: string };
+        claims: unknown[];
+      };
+      expect(body.orderItem.productCode).toBe('1002');
+      expect(body.claims).toHaveLength(1);
+    });
+
+    it('rejects swap from a non-member with 403', async () => {
+      const { member, orderId } = await seedOrder();
+      const intruder = await seedMember('eve@test.local', 'Eve', 'EV');
+      const { id: itemId } = await seedOrderItem(orderId, member.id, 'alice@test.local', '1001');
+
+      const res = await authFetch(
+        `/orders/${orderId}/items/${itemId}/swap`,
+        intruder.id,
+        'eve@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(TEST_ITEMS['1002']),
+        },
+      );
+
+      expect(res.status).toBe(403);
+    });
+
+    it('returns 404 for a missing item', async () => {
+      const { member, orderId } = await seedOrder();
+
+      const res = await authFetch(
+        `/orders/${orderId}/items/nonexistent/swap`,
+        member.id,
+        'alice@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(TEST_ITEMS['1002']),
+        },
+      );
+
+      expect(res.status).toBe(404);
+    });
+
+    it('rejects an invalid target snapshot with 400', async () => {
+      const { member, orderId } = await seedOrder();
+      const { id: itemId } = await seedOrderItem(orderId, member.id, 'alice@test.local', '1001');
+
+      const res = await authFetch(
+        `/orders/${orderId}/items/${itemId}/swap`,
+        member.id,
+        'alice@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...TEST_ITEMS['1002'], casePrice: -1 }),
+        },
+      );
+
+      expect(res.status).toBe(400);
     });
   });
 
