@@ -82,6 +82,11 @@ test.describe('Invoice-driven reconciliation', () => {
     await expect(matchedCount).toHaveText('3 matched');
     await expect(page.getByTestId('invoice-missing')).toHaveText('0 missing');
 
+    // While the invoice is parsed (pre-apply), the invoice-result panel and the
+    // order-totals tfoot both reference the invoice number — confirms the PDF
+    // was parsed correctly and matched against the order.
+    await expect(page.getByText('Invoice 677901').first()).toBeVisible();
+
     // 8. Apply the invoice
     await page.click('button:has-text("Apply invoice")');
 
@@ -100,9 +105,6 @@ test.describe('Invoice-driven reconciliation', () => {
     await allocateBtn.click();
 
     await expect(page.locator('details').first()).toBeVisible({ timeout: 30000 });
-
-    // 10. Order totals section should show invoice totals row
-    await expect(page.getByText('Invoice 677901').first()).toBeVisible();
 
     // 11. Confirm all allocations
     const confirmAllBtn = page.locator('button:has-text("Confirm all my allocations")');

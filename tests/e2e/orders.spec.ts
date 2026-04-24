@@ -31,9 +31,9 @@ test.describe('Orders', () => {
     await page.locator('a:has-text("E2E Test Order")').first().click();
 
     // Should see the order dashboard
-    await expect(page.getByText('Members')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Members' })).toBeVisible();
     await expect(page.getByText('E2E User')).toBeVisible();
-    await expect(page.getByText('Invite link')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Invite link' })).toBeVisible();
 
     // Copy link button should be visible
     await expect(page.getByRole('button', { name: 'Copy link' })).toBeVisible();
