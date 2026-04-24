@@ -216,6 +216,95 @@ describe('Reconciliation API', () => {
       expect(typeof body.allConfirmed).toBe('boolean');
     });
 
+    it('applies a percentage-points discount split to member allocations', async () => {
+      // Order setup: one item (productCode 1001, casePrice 15.55, 6×500g = 3000g case,
+      // vatRate 0). Organiser claims 500g. With a 6% wholesale discount and a
+      // 2% admin fee, members see 4% off: (500/3000) × 15.55 × (1 − 0.04).
+      const { organiser, orderId, itemId } = await setupReconcilingOrder();
+
+      // Apply the discount at the order level.
+      const patchRes = await authFetch(`/orders/${orderId}`, organiser.id, 'organiser@test.local', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ discountPercentage: 6, adminFeePercentage: 2 }),
+      });
+      expect(patchRes.status).toBe(200);
+
+      // Mark the item as arrived so there's a delivery status.
+      await authFetch(
+        `/orders/${orderId}/items/${itemId}/delivery`,
+        organiser.id,
+        'organiser@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'arrived' }),
+        },
+      );
+
+      // Generate allocations so the summary reflects the post-discount price.
+      await authFetch(`/orders/${orderId}/allocate`, organiser.id, 'organiser@test.local', {
+        method: 'POST',
+      });
+
+      const res = await authFetch(
+        `/orders/${orderId}/reconciliation`,
+        organiser.id,
+        'organiser@test.local',
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        orderTotals: { net: number; vat: number; gross: number };
+        memberSummaries: { totals: { net: number } }[];
+        discount: {
+          discountPercentage: number;
+          adminFeePercentage: number;
+          memberDiscountPercentage: number;
+          subtotalBeforeDiscount: number;
+          discountAmount: number;
+          adminFeeAmount: number;
+          memberDiscountAmount: number;
+        } | null;
+      };
+
+      // Raw: 500/3000 × 15.55 = 2.5916…; with 4% off → 2.488
+      const expectedNet = (500 / 3000) * 15.55 * 0.96;
+      expect(body.memberSummaries).toHaveLength(1);
+      expect(body.memberSummaries[0].totals.net).toBeCloseTo(expectedNet, 2);
+      expect(body.orderTotals.net).toBeCloseTo(expectedNet, 2);
+
+      expect(body.discount).not.toBeNull();
+      expect(body.discount!.discountPercentage).toBe(6);
+      expect(body.discount!.adminFeePercentage).toBe(2);
+      expect(body.discount!.memberDiscountPercentage).toBe(4);
+      // The pre-discount subtotal should recover the raw net (2.5916…).
+      expect(body.discount!.subtotalBeforeDiscount).toBeCloseTo(
+        (500 / 3000) * 15.55,
+        2,
+      );
+    });
+
+    it('returns discount: null when no invoice discount is applied', async () => {
+      const { organiser, orderId, itemId } = await setupReconcilingOrder();
+      await authFetch(
+        `/orders/${orderId}/items/${itemId}/delivery`,
+        organiser.id,
+        'organiser@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'arrived' }),
+        },
+      );
+      const res = await authFetch(
+        `/orders/${orderId}/reconciliation`,
+        organiser.id,
+        'organiser@test.local',
+      );
+      const body = (await res.json()) as { discount: unknown };
+      expect(body.discount).toBeNull();
+    });
+
     it('returns an empty summary when order is open', async () => {
       const organiser = await seedMember('organiser@test.local', 'Organiser', 'ORG');
       const { catalogueKey } = await seedCatalogue();

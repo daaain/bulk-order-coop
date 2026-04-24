@@ -1,5 +1,5 @@
 import { Miniflare } from 'miniflare';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import app, { type Bindings } from '../../server/index';
 import { signJwt } from '../../server/services/jwt';
@@ -102,15 +102,20 @@ export async function setupMiniflare() {
   db = (await mf.getD1Database('DB')) as unknown as D1Database;
   kv = (await mf.getKVNamespace('CATALOGUE_KV')) as unknown as KVNamespace;
 
-  const migrationPath = resolve(process.cwd(), 'db/migrations/0000_famous_pete_wisdom.sql');
-  const raw = readFileSync(migrationPath, 'utf-8');
-  const statements = raw
-    .split('--> statement-breakpoint')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  for (const stmt of statements) {
-    const oneLine = stmt.replace(/\n/g, ' ').replace(/\t/g, ' ');
-    await db.exec(oneLine);
+  const migrationsDir = resolve(process.cwd(), 'db/migrations');
+  const files = readdirSync(migrationsDir)
+    .filter((f) => f.endsWith('.sql'))
+    .sort();
+  for (const file of files) {
+    const raw = readFileSync(resolve(migrationsDir, file), 'utf-8');
+    const statements = raw
+      .split('--> statement-breakpoint')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    for (const stmt of statements) {
+      const oneLine = stmt.replace(/\n/g, ' ').replace(/\t/g, ' ');
+      await db.exec(oneLine);
+    }
   }
 }
 

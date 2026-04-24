@@ -22,6 +22,9 @@ export interface InvoiceLineItem {
 }
 
 export interface InvoiceTotals {
+  subtotal: number;
+  discountPercentage: number;
+  discountAmount: number;
   nettGoodsValue: number;
   vat: number;
   totalPayable: number;
@@ -248,7 +251,27 @@ function parseHeader(rows: PositionedRow[]): {
   return { invoiceNumber, date, customerName };
 }
 
+// Match a number in the totals column: £-prefixed ("£1763.39") or bare ("1723.39").
+const MONEY_TOKEN = /^£?(\d+(?:\.\d+)?)$/;
+
+function firstMoneyValue(
+  row: PositionedRow,
+  opts: { minX?: number; excludeXs?: Set<number> } = {},
+): number | null {
+  const minX = opts.minX ?? 450;
+  for (const t of row.tokens) {
+    if (t.x <= minX) continue;
+    if (opts.excludeXs?.has(t.x)) continue;
+    const m = t.str.match(MONEY_TOKEN);
+    if (m) return parseFloat(m[1]);
+  }
+  return null;
+}
+
 function parseTotals(rows: PositionedRow[]): InvoiceTotals {
+  let subtotal = 0;
+  let discountPercentage = 0;
+  let discountAmount = 0;
   let nettGoodsValue = 0;
   let vat = 0;
   let totalPayable = 0;
@@ -262,20 +285,43 @@ function parseTotals(rows: PositionedRow[]): InvoiceTotals {
   for (const row of lastPageRows) {
     const text = row.tokens.map((t) => t.str).join(' ');
 
-    // NETT GOODS VALUE row
-    if (text.includes('NETT GOODS VALUE')) {
-      const valueToken = row.tokens.find((t) => t.str.startsWith('£') && t.x > 450);
-      if (valueToken) {
-        nettGoodsValue = parseFloat(valueToken.str.replace('£', ''));
-      }
+    // SUBTOTAL row — pre-discount goods value. May share the row with a VAT
+    // subtotal column; take the first (left-most) money token.
+    if (row.tokens.some((t) => t.str === 'SUBTOTAL')) {
+      const v = firstMoneyValue(row);
+      if (v !== null) subtotal = v;
     }
 
-    // TOTAL PAYABLE row
-    if (text.includes('TOTAL PAYABLE')) {
-      const valueToken = row.tokens.find((t) => t.str.startsWith('£') && t.x > 450);
-      if (valueToken) {
-        totalPayable = parseFloat(valueToken.str.replace('£', ''));
+    // Discount row — e.g. "6% Discount  110.01  2.55". Extract the percentage
+    // and the first £/numeric amount.
+    if (row.tokens.some((t) => t.str === 'Discount' || t.str === 'discount')) {
+      for (const t of row.tokens) {
+        const m = t.str.match(/^(\d+(?:\.\d+)?)%$/);
+        if (m) {
+          discountPercentage = parseFloat(m[1]);
+          break;
+        }
       }
+      const v = firstMoneyValue(row);
+      if (v !== null) discountAmount = v;
+    }
+
+    // NETT GOODS VALUE row
+    if (text.includes('NETT GOODS VALUE')) {
+      const v = firstMoneyValue(row);
+      if (v !== null) nettGoodsValue = v;
+    }
+
+    // TOTAL row — accept either "TOTAL PAYABLE" or a bare "TOTAL" token
+    // (Infinity Foods uses the latter when a discount is applied).
+    const hasTotalPayable = text.includes('TOTAL PAYABLE');
+    const hasBareTotal =
+      !hasTotalPayable &&
+      !text.includes('SUBTOTAL') &&
+      row.tokens.some((t) => t.str === 'TOTAL');
+    if (hasTotalPayable || hasBareTotal) {
+      const v = firstMoneyValue(row);
+      if (v !== null) totalPayable = v;
     }
 
     // VAT row (standalone "VAT" label in totals area, not the column header)
@@ -285,10 +331,8 @@ function parseTotals(rows: PositionedRow[]): InvoiceTotals {
       !text.includes('TOTAL') &&
       !text.includes('rate')
     ) {
-      const valueToken = row.tokens.find((t) => t.str.startsWith('£') && t.x > 450);
-      if (valueToken) {
-        vat = parseFloat(valueToken.str.replace('£', ''));
-      }
+      const v = firstMoneyValue(row);
+      if (v !== null) vat = v;
     }
 
     // Cases
@@ -310,7 +354,22 @@ function parseTotals(rows: PositionedRow[]): InvoiceTotals {
     }
   }
 
-  return { nettGoodsValue, vat, totalPayable, cases, totalWeight };
+  // Invoices without an explicit SUBTOTAL row (no discount applied): the
+  // subtotal equals the nett goods value.
+  if (subtotal === 0 && nettGoodsValue > 0) {
+    subtotal = nettGoodsValue + discountAmount;
+  }
+
+  return {
+    subtotal,
+    discountPercentage,
+    discountAmount,
+    nettGoodsValue,
+    vat,
+    totalPayable,
+    cases,
+    totalWeight,
+  };
 }
 
 export function parseInvoice(items: PositionedTextItem[]): ParsedInvoice {

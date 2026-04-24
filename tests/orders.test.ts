@@ -68,6 +68,31 @@ describe('validateUpdateOrder', () => {
     expect(result).toHaveProperty('error');
     expect((result as { error: string }).error).toMatch(/at least one/i);
   });
+
+  it('accepts discountPercentage in range', () => {
+    const result = validateUpdateOrder({ discountPercentage: 6 });
+    expect(result).toEqual({ discountPercentage: 6 });
+  });
+
+  it('accepts adminFeePercentage in range', () => {
+    const result = validateUpdateOrder({ adminFeePercentage: 2 });
+    expect(result).toEqual({ adminFeePercentage: 2 });
+  });
+
+  it('accepts null to clear discountPercentage', () => {
+    const result = validateUpdateOrder({ discountPercentage: null });
+    expect(result).toEqual({ discountPercentage: null });
+  });
+
+  it('rejects discountPercentage outside [0, 100]', () => {
+    expect(validateUpdateOrder({ discountPercentage: -1 })).toHaveProperty('error');
+    expect(validateUpdateOrder({ discountPercentage: 101 })).toHaveProperty('error');
+  });
+
+  it('rejects non-numeric adminFeePercentage', () => {
+    const result = validateUpdateOrder({ adminFeePercentage: 'two' });
+    expect(result).toHaveProperty('error');
+  });
 });
 
 describe('isValidStatusTransition', () => {

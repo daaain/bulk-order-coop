@@ -19,7 +19,13 @@ export async function createOrder(data: {
 
 export async function updateOrder(
   id: string,
-  data: { name?: string; deadline?: number | null; status?: string },
+  data: {
+    name?: string;
+    deadline?: number | null;
+    status?: string;
+    discountPercentage?: number | null;
+    adminFeePercentage?: number | null;
+  },
 ): Promise<Order> {
   return apiFetch<Order>(`/orders/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 }

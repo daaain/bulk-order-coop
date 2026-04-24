@@ -33,6 +33,13 @@ export const orders = sqliteTable('orders', {
     .references(() => members.id)
     .notNull(),
   createdAt: integer('created_at').notNull(),
+  // Wholesale discount on the invoice, as a percentage of subtotal.
+  // Null until the organiser applies an invoice discount to the order.
+  discountPercentage: real('discount_percentage'),
+  // Percentage-points retained by the Ltd for admin. The remainder of the
+  // invoice discount (discountPercentage - adminFeePercentage) is passed
+  // through to members on their allocations. Null = use default of 2.
+  adminFeePercentage: real('admin_fee_percentage'),
 });
 
 // ── order_members ── who's part of an order ──────────────────────────────────

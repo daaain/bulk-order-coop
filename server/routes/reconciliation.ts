@@ -16,14 +16,16 @@ import {
 } from '../../db/schema';
 import { validateDeliveryUpdate, computeAllocations } from '../services/reconciliation';
 import { calculateRounding } from '../../shared/rounding';
-import { calculateCaseSize, estimateCost } from '../../shared/costs';
+import { calculateCaseSize, estimateCost, applyDiscount } from '../../shared/costs';
 import type {
   ClaimWithMember,
   AllocationWithMember,
   ReconciliationItem,
   MemberCostSummary,
   ReconciliationSummary,
+  OrderDiscountSummary,
 } from '../../shared/types';
+import { DEFAULT_ADMIN_FEE_PERCENTAGE } from '../../shared/types';
 import { catalogueItemFromOrderItem } from './items';
 
 const app = new Hono<{
@@ -139,13 +141,21 @@ app.get('/:id/reconciliation', async (c) => {
   }
 
   const [order] = await db
-    .select({ status: orders.status })
+    .select({
+      status: orders.status,
+      discountPercentage: orders.discountPercentage,
+      adminFeePercentage: orders.adminFeePercentage,
+    })
     .from(orders)
     .where(eq(orders.id, orderId));
 
   if (!order) {
     return c.json({ error: 'Order not found' }, 404);
   }
+
+  const discountPct = order.discountPercentage ?? 0;
+  const adminPct = order.adminFeePercentage ?? DEFAULT_ADMIN_FEE_PERCENTAGE;
+  const memberDiscountPct = Math.max(0, discountPct - adminPct);
 
   // 1. Get all order items (with product snapshots)
   const items = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
@@ -156,6 +166,7 @@ app.get('/:id/reconciliation', async (c) => {
       memberSummaries: [],
       orderTotals: { net: 0, vat: 0, gross: 0 },
       allConfirmed: true,
+      discount: null,
     } satisfies ReconciliationSummary);
   }
 
@@ -280,7 +291,7 @@ app.get('/:id/reconciliation', async (c) => {
         memberTotals.set(alloc.memberId, summary);
       }
 
-      const cost = estimateCost(
+      const rawCost = estimateCost(
         alloc.amount,
         caseSize,
         reconItem.delivery?.status === 'different_price' && reconItem.delivery.actualPrice
@@ -288,6 +299,7 @@ app.get('/:id/reconciliation', async (c) => {
           : ci.casePrice,
         ci.vatRate,
       );
+      const cost = applyDiscount(rawCost, memberDiscountPct);
       const net = Math.round(cost.net * 100) / 100;
       const vat = Math.round(cost.vat * 100) / 100;
       const gross = Math.round(cost.gross * 100) / 100;
@@ -333,11 +345,37 @@ app.get('/:id/reconciliation', async (c) => {
 
   const allConfirmed = memberSummaries.length > 0 && memberSummaries.every((m) => m.allConfirmed);
 
+  // Derive the pre-discount subtotal from the sum of member nets: members
+  // already see the post-discount net, so dividing by (1 - memberPct/100)
+  // recovers the pre-discount amount. This keeps the totals row aligned with
+  // the allocation lines rather than with invoice-wide VAT rounding.
+  let discount: OrderDiscountSummary | null = null;
+  if (order.discountPercentage !== null && order.discountPercentage > 0) {
+    const memberFactor = 1 - memberDiscountPct / 100;
+    const subtotalBeforeDiscount =
+      memberFactor > 0 ? orderTotals.net / memberFactor : orderTotals.net;
+    const subtotal = Math.round(subtotalBeforeDiscount * 100) / 100;
+    const discountAmount = Math.round(((subtotal * discountPct) / 100) * 100) / 100;
+    const adminFeeAmount = Math.round(((subtotal * adminPct) / 100) * 100) / 100;
+    const memberDiscountAmount =
+      Math.round(((subtotal * memberDiscountPct) / 100) * 100) / 100;
+    discount = {
+      discountPercentage: discountPct,
+      adminFeePercentage: adminPct,
+      memberDiscountPercentage: memberDiscountPct,
+      subtotalBeforeDiscount: subtotal,
+      discountAmount,
+      adminFeeAmount,
+      memberDiscountAmount,
+    };
+  }
+
   return c.json({
     items: reconItems,
     memberSummaries,
     orderTotals,
     allConfirmed,
+    discount,
   } satisfies ReconciliationSummary);
 });
 
@@ -364,7 +402,11 @@ app.post('/:id/allocate', async (c) => {
   }
 
   const [order] = await db
-    .select({ status: orders.status })
+    .select({
+      status: orders.status,
+      discountPercentage: orders.discountPercentage,
+      adminFeePercentage: orders.adminFeePercentage,
+    })
     .from(orders)
     .where(eq(orders.id, orderId));
 
@@ -375,6 +417,10 @@ app.post('/:id/allocate', async (c) => {
   if (order.status !== 'reconciling') {
     return c.json({ error: 'Order must be in reconciling status' }, 400);
   }
+
+  const allocateDiscountPct = order.discountPercentage ?? 0;
+  const allocateAdminPct = order.adminFeePercentage ?? DEFAULT_ADMIN_FEE_PERCENTAGE;
+  const allocateMemberDiscountPct = Math.max(0, allocateDiscountPct - allocateAdminPct);
 
   // Get all order items (with product snapshots)
   const items = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
@@ -442,6 +488,7 @@ app.post('/:id/allocate', async (c) => {
       item.vatRate,
       delivery.actualPrice,
       delivery.actualQuantity,
+      allocateMemberDiscountPct,
     );
 
     for (const alloc of computed) {

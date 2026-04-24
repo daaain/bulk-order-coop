@@ -40,16 +40,39 @@ export function validateCreateOrder(
   return result;
 }
 
-export function validateUpdateOrder(
-  body: unknown,
-): { name?: string; deadline?: number | null; status?: string } | { error: string } {
+export interface UpdateOrderInput {
+  name?: string;
+  deadline?: number | null;
+  status?: string;
+  discountPercentage?: number | null;
+  adminFeePercentage?: number | null;
+}
+
+function validatePercentField(
+  name: string,
+  value: unknown,
+): { ok: true; value: number | null } | { error: string } {
+  if (value === null) return { ok: true, value: null };
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return { error: `${name} must be a number in [0, 100] or null` };
+  }
+  if (value < 0 || value > 100) {
+    return { error: `${name} must be between 0 and 100` };
+  }
+  return { ok: true, value };
+}
+
+export function validateUpdateOrder(body: unknown): UpdateOrderInput | { error: string } {
   if (!body || typeof body !== 'object') {
     return { error: 'Request body must be an object' };
   }
 
-  const { name, deadline, status } = body as Record<string, unknown>;
+  const { name, deadline, status, discountPercentage, adminFeePercentage } = body as Record<
+    string,
+    unknown
+  >;
 
-  const result: { name?: string; deadline?: number | null; status?: string } = {};
+  const result: UpdateOrderInput = {};
 
   if (name !== undefined) {
     if (typeof name !== 'string' || name.trim() === '') {
@@ -72,8 +95,23 @@ export function validateUpdateOrder(
     result.status = status;
   }
 
+  if (discountPercentage !== undefined) {
+    const v = validatePercentField('discountPercentage', discountPercentage);
+    if ('error' in v) return { error: v.error };
+    result.discountPercentage = v.value;
+  }
+
+  if (adminFeePercentage !== undefined) {
+    const v = validatePercentField('adminFeePercentage', adminFeePercentage);
+    if ('error' in v) return { error: v.error };
+    result.adminFeePercentage = v.value;
+  }
+
   if (Object.keys(result).length === 0) {
-    return { error: 'At least one field (name, deadline, status) is required' };
+    return {
+      error:
+        'At least one field (name, deadline, status, discountPercentage, adminFeePercentage) is required',
+    };
   }
 
   return result;

@@ -302,6 +302,83 @@ describe('parseInvoice — totals', () => {
     const invoice = parseInvoice(items);
     expect(invoice.totals.totalWeight).toBe('10.00Kg');
   });
+
+  it('defaults subtotal to nettGoodsValue when no discount row is present', () => {
+    const items = makeInvoiceItems(chiaRow());
+    const invoice = parseInvoice(items);
+    expect(invoice.totals.subtotal).toBe(100);
+    expect(invoice.totals.discountPercentage).toBe(0);
+    expect(invoice.totals.discountAmount).toBe(0);
+  });
+});
+
+describe('parseInvoice — totals with discount', () => {
+  // Simulates the totals block on an invoice with a 6% wholesale discount
+  // (e.g. Pangolin's Infinity Foods invoice). Label tokens share a row with
+  // the net value column (around x≈500) — and the TOTAL row uses a bare
+  // "TOTAL" token (not "TOTAL PAYABLE").
+  function discountedTotals(): PositionedTextItem[] {
+    return [
+      item('SUBTOTAL', 406.4, 238),
+      item('1833.40', 500, 238),
+      item('6%', 406.4, 224),
+      item('Discount', 426.4, 224),
+      item('110.01', 500, 224),
+      item('NETT GOODS VALUE', 394.5, 210),
+      item('1723.39', 500, 210),
+      item('VAT', 439.3, 195),
+      item('40.00', 500, 195),
+      item('TOTAL', 439.3, 180),
+      item('£1763.39', 499.6, 180),
+      item('cases', 457, 70),
+      item('93.00', 548, 70),
+      item('333.07Kg', 530.6, 54),
+    ];
+  }
+
+  function makeDiscountedInvoice(...itemRows: PositionedTextItem[][]): PositionedTextItem[] {
+    const header = [
+      item('INVOICE', 140, 810),
+      item('Pangolin Collective Ltd', 279, 810),
+      item('408767', 140, 784),
+      item('27/04/2026', 140, 748),
+    ];
+    const columnHeaders = [
+      item('code', 19, 662),
+      item('product', 140, 662),
+    ];
+    return [...header, ...columnHeaders, ...itemRows.flat(), ...discountedTotals()];
+  }
+
+  it('extracts subtotal from the SUBTOTAL row', () => {
+    const invoice = parseInvoice(makeDiscountedInvoice(chiaRow()));
+    expect(invoice.totals.subtotal).toBe(1833.4);
+  });
+
+  it('extracts discountPercentage from "N% Discount"', () => {
+    const invoice = parseInvoice(makeDiscountedInvoice(chiaRow()));
+    expect(invoice.totals.discountPercentage).toBe(6);
+  });
+
+  it('extracts discountAmount from the discount row', () => {
+    const invoice = parseInvoice(makeDiscountedInvoice(chiaRow()));
+    expect(invoice.totals.discountAmount).toBe(110.01);
+  });
+
+  it('extracts nettGoodsValue from a bare numeric (no £ prefix)', () => {
+    const invoice = parseInvoice(makeDiscountedInvoice(chiaRow()));
+    expect(invoice.totals.nettGoodsValue).toBe(1723.39);
+  });
+
+  it('extracts vat from a bare numeric (no £ prefix)', () => {
+    const invoice = parseInvoice(makeDiscountedInvoice(chiaRow()));
+    expect(invoice.totals.vat).toBe(40);
+  });
+
+  it('extracts totalPayable when the row is labelled just "TOTAL"', () => {
+    const invoice = parseInvoice(makeDiscountedInvoice(chiaRow()));
+    expect(invoice.totals.totalPayable).toBe(1763.39);
+  });
 });
 
 describe('parseInvoice — real fixture PDF', () => {

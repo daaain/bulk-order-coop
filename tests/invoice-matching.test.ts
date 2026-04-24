@@ -28,7 +28,16 @@ function makeInvoice(items: InvoiceLineItem[]): ParsedInvoice {
     date: '01/01/26',
     customerName: 'Test',
     items,
-    totals: { nettGoodsValue: 0, vat: 0, totalPayable: 0, cases: 0, totalWeight: '0Kg' },
+    totals: {
+      subtotal: 0,
+      discountPercentage: 0,
+      discountAmount: 0,
+      nettGoodsValue: 0,
+      vat: 0,
+      totalPayable: 0,
+      cases: 0,
+      totalWeight: '0Kg',
+    },
   };
 }
 

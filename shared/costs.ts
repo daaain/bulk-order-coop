@@ -39,3 +39,21 @@ export function estimateCost(
   const gross = net + vat;
   return { net, vat, gross };
 }
+
+/**
+ * Apply a percentage discount to a cost triple. UK VAT is charged on the
+ * post-discount net, so scaling net and VAT by the same factor is correct.
+ * @param memberDiscountPct Percentage to take off (0..100). 0 = pass through.
+ */
+export function applyDiscount(
+  cost: { net: number; vat: number; gross: number },
+  memberDiscountPct: number,
+): { net: number; vat: number; gross: number } {
+  if (memberDiscountPct === 0) return cost;
+  const factor = 1 - memberDiscountPct / 100;
+  return {
+    net: cost.net * factor,
+    vat: cost.vat * factor,
+    gross: cost.gross * factor,
+  };
+}

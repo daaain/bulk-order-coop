@@ -1,5 +1,5 @@
 import type { DeliveryStatus } from '../../shared/types';
-import { estimateCost } from '../../shared/costs';
+import { estimateCost, applyDiscount } from '../../shared/costs';
 
 const VALID_STATUSES: DeliveryStatus[] = ['arrived', 'missing', 'partial', 'different_price'];
 
@@ -72,6 +72,8 @@ export interface ComputedAllocation {
  * @param vatCode      Infinity Foods VAT code (0 or 2)
  * @param actualPrice  Actual case price (when status is 'different_price')
  * @param actualQuantity Actual units delivered (when status is 'partial')
+ * @param memberDiscountPct Percentage discount passed through to members
+ *        (e.g. invoice discount % minus admin fee %). Defaults to 0.
  */
 export function computeAllocations(
   claims: AllocationInput[],
@@ -82,6 +84,7 @@ export function computeAllocations(
   vatCode: number,
   actualPrice?: number | null,
   actualQuantity?: number | null,
+  memberDiscountPct: number = 0,
 ): ComputedAllocation[] {
   if (status === 'missing' || claims.length === 0) {
     return [];
@@ -97,7 +100,8 @@ export function computeAllocations(
 
   return claims.map((claim) => {
     const allocatedAmount = Math.round(claim.amount * scaleFactor * 100) / 100;
-    const cost = estimateCost(allocatedAmount, caseSize, effectivePrice, vatCode);
+    const rawCost = estimateCost(allocatedAmount, caseSize, effectivePrice, vatCode);
+    const cost = applyDiscount(rawCost, memberDiscountPct);
     const price = Math.round(cost.net * 100) / 100;
 
     return { memberId: claim.memberId, amount: allocatedAmount, price };

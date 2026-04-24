@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { estimateCost, calculateCaseSize, vatRateToPercent } from '$shared/costs';
+import { estimateCost, calculateCaseSize, vatRateToPercent, applyDiscount } from '$shared/costs';
 
 describe('calculateCaseSize', () => {
   it('multiplies unitsPerCase by packSize for packaged items', () => {
@@ -67,5 +67,35 @@ describe('estimateCost', () => {
     expect(result.net).toBe(0);
     expect(result.vat).toBe(0);
     expect(result.gross).toBe(0);
+  });
+});
+
+describe('applyDiscount', () => {
+  it('passes the cost through unchanged when discount is 0', () => {
+    const cost = { net: 10, vat: 2, gross: 12 };
+    expect(applyDiscount(cost, 0)).toEqual(cost);
+  });
+
+  it('scales net, vat, and gross by the same factor', () => {
+    // 4% member discount on £10 net, 20% VAT → net 9.60, vat 1.92, gross 11.52
+    const cost = { net: 10, vat: 2, gross: 12 };
+    const discounted = applyDiscount(cost, 4);
+    expect(discounted.net).toBeCloseTo(9.6);
+    expect(discounted.vat).toBeCloseTo(1.92);
+    expect(discounted.gross).toBeCloseTo(11.52);
+  });
+
+  it('preserves net + vat = gross after discounting', () => {
+    const cost = estimateCost(1000, 3000, 18.0, 2); // net 6, vat 1.20, gross 7.20
+    const discounted = applyDiscount(cost, 4);
+    expect(discounted.net + discounted.vat).toBeCloseTo(discounted.gross);
+  });
+
+  it('zeroes the cost when the discount is 100%', () => {
+    const cost = { net: 10, vat: 2, gross: 12 };
+    const discounted = applyDiscount(cost, 100);
+    expect(discounted.net).toBe(0);
+    expect(discounted.vat).toBe(0);
+    expect(discounted.gross).toBe(0);
   });
 });

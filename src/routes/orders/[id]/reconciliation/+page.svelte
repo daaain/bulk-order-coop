@@ -47,6 +47,14 @@
   let invoiceError = $state('');
   let infinityCopied = $state(false);
 
+  // When an invoice carrying a wholesale discount is uploaded, these drive
+  // the "apply to order" form in the invoice-result panel. Defaults: apply
+  // the discount and retain 2pp for admin.
+  let applyDiscountChecked = $state(true);
+  let adminFeeInput = $state(2);
+  let adminFeeEdit = $state<number | null>(null);
+  let savingDiscount = $state(false);
+
   const isOrganiser = $derived(
     data.order.members.some((m) => m.memberId === auth.user?.id && m.role === 'organiser'),
   );
@@ -222,6 +230,9 @@
       }));
       parsedInvoice = invoice;
       invoiceResult = matchInvoiceToOrder(invoice, orderItems);
+      // Reset apply-discount controls to sensible defaults for the new invoice.
+      applyDiscountChecked = invoice.totals.discountPercentage > 0;
+      adminFeeInput = data.order.adminFeePercentage ?? 2;
     } catch (err: unknown) {
       invoiceError = (err as Error).message || 'Failed to parse invoice';
     } finally {
@@ -232,27 +243,73 @@
   }
 
   async function applyInvoice() {
-    if (!invoiceResult) return;
+    if (!invoiceResult || !parsedInvoice) return;
     applyingInvoice = true;
     invoiceError = '';
     try {
       const updates: DeliveryUpdate[] = [...invoiceResult.matched, ...invoiceResult.missing];
-      await Promise.all(
-        updates.map((u) =>
-          updateDeliveryStatus(data.orderId, u.orderItemId, {
-            status: u.status,
-            actualQuantity: u.actualQuantity,
-            actualPrice: u.actualPrice,
-            notes: u.notes,
-          }),
-        ),
+      const discountPct = parsedInvoice.totals.discountPercentage;
+      const shouldApplyDiscount = applyDiscountChecked && discountPct > 0;
+
+      const tasks: Promise<unknown>[] = updates.map((u) =>
+        updateDeliveryStatus(data.orderId, u.orderItemId, {
+          status: u.status,
+          actualQuantity: u.actualQuantity,
+          actualPrice: u.actualPrice,
+          notes: u.notes,
+        }),
       );
+
+      if (shouldApplyDiscount) {
+        const updated = await updateOrder(data.orderId, {
+          discountPercentage: discountPct,
+          adminFeePercentage: adminFeeInput,
+        });
+        data.order = { ...data.order, ...updated };
+      }
+
+      await Promise.all(tasks);
       invoiceResult = null;
+      parsedInvoice = null;
       await loadReconciliation();
     } catch (err: unknown) {
       invoiceError = (err as Error).message || 'Failed to apply invoice';
     } finally {
       applyingInvoice = false;
+    }
+  }
+
+  async function saveAdminFee() {
+    if (adminFeeEdit === null) return;
+    savingDiscount = true;
+    error = '';
+    try {
+      const updated = await updateOrder(data.orderId, {
+        adminFeePercentage: adminFeeEdit,
+      });
+      data.order = { ...data.order, ...updated };
+      adminFeeEdit = null;
+      await loadReconciliation();
+    } catch (err: unknown) {
+      error = (err as Error).message || 'Failed to update admin fee';
+    } finally {
+      savingDiscount = false;
+    }
+  }
+
+  async function clearDiscount() {
+    savingDiscount = true;
+    error = '';
+    try {
+      const updated = await updateOrder(data.orderId, {
+        discountPercentage: null,
+      });
+      data.order = { ...data.order, ...updated };
+      await loadReconciliation();
+    } catch (err: unknown) {
+      error = (err as Error).message || 'Failed to clear discount';
+    } finally {
+      savingDiscount = false;
     }
   }
 
@@ -445,6 +502,8 @@
           </div>
 
           {#if invoiceResult && parsedInvoice}
+            {@const invoiceDiscountPct = parsedInvoice.totals.discountPercentage}
+            {@const memberPct = Math.max(0, invoiceDiscountPct - adminFeeInput)}
             <article class="invoice-result">
               <header>
                 <strong>Invoice {parsedInvoice.invoiceNumber}</strong> — {parsedInvoice.date}
@@ -469,6 +528,34 @@
                   </ul>
                 </details>
               {/if}
+
+              {#if invoiceDiscountPct > 0}
+                <div class="invoice-discount" data-testid="invoice-discount">
+                  <label>
+                    <input type="checkbox" bind:checked={applyDiscountChecked} role="switch" />
+                    Apply <strong>{invoiceDiscountPct}% discount</strong>
+                    ({formatPrice(parsedInvoice.totals.discountAmount)}) to this order
+                  </label>
+                  {#if applyDiscountChecked}
+                    <label class="admin-fee-label">
+                      Admin fee (%)
+                      <input
+                        type="number"
+                        min="0"
+                        max={invoiceDiscountPct}
+                        step="0.1"
+                        bind:value={adminFeeInput}
+                        class="table-input table-input--narrow"
+                      />
+                    </label>
+                    <small>
+                      Members receive <strong>{memberPct.toFixed(memberPct % 1 === 0 ? 0 : 1)}%</strong> off
+                      each line; the Ltd retains the equivalent of {adminFeeInput}%.
+                    </small>
+                  {/if}
+                </div>
+              {/if}
+
               <button onclick={applyInvoice} disabled={applyingInvoice} aria-busy={applyingInvoice}>
                 Apply invoice
               </button>
@@ -708,6 +795,58 @@
     <!-- Summary footer -->
     <section>
       <h2>Order totals</h2>
+
+      {#if recon.discount && isOrganiser && !isReadOnly}
+        <article class="discount-admin" data-testid="discount-admin">
+          <p>
+            <strong>{recon.discount.discountPercentage}% wholesale discount</strong> applied
+            ({formatPrice(recon.discount.discountAmount)}). Members see <strong
+              >{recon.discount.memberDiscountPercentage.toFixed(
+                recon.discount.memberDiscountPercentage % 1 === 0 ? 0 : 1,
+              )}%</strong
+            >
+            off each line; Ltd retains {formatPrice(recon.discount.adminFeeAmount)} for admin.
+          </p>
+          <div class="discount-admin__controls">
+            {#if adminFeeEdit === null}
+              <button
+                class="outline"
+                onclick={() => (adminFeeEdit = recon?.discount?.adminFeePercentage ?? 2)}
+                disabled={savingDiscount}
+              >
+                Change admin fee
+              </button>
+              <button
+                class="outline secondary"
+                onclick={clearDiscount}
+                disabled={savingDiscount}
+                aria-busy={savingDiscount}
+              >
+                Clear discount
+              </button>
+            {:else}
+              <label class="admin-fee-label">
+                Admin fee (%)
+                <input
+                  type="number"
+                  min="0"
+                  max={recon.discount.discountPercentage}
+                  step="0.1"
+                  bind:value={adminFeeEdit}
+                  class="table-input table-input--narrow"
+                />
+              </label>
+              <button onclick={saveAdminFee} disabled={savingDiscount} aria-busy={savingDiscount}>
+                Save
+              </button>
+              <button class="outline" onclick={() => (adminFeeEdit = null)} disabled={savingDiscount}>
+                Cancel
+              </button>
+            {/if}
+          </div>
+        </article>
+      {/if}
+
       <figure>
         <table>
           <thead>
@@ -737,13 +876,61 @@
             {/each}
           </tbody>
           <tfoot>
-            <tr>
-              <td><strong>Total</strong></td>
-              <td><strong>{formatPrice(recon.orderTotals.net)}</strong></td>
-              <td><strong>{formatPrice(recon.orderTotals.vat)}</strong></td>
-              <td><strong>{formatPrice(recon.orderTotals.gross)}</strong></td>
-              <td></td>
-            </tr>
+            {#if recon.discount}
+              <tr>
+                <td><strong>Subtotal</strong></td>
+                <td><strong>{formatPrice(recon.discount.subtotalBeforeDiscount)}</strong></td>
+                <td></td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr class="discount-row">
+                <td>
+                  <em>{recon.discount.discountPercentage}% discount</em>
+                </td>
+                <td>−{formatPrice(recon.discount.discountAmount)}</td>
+                <td></td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr class="discount-row discount-row--indent">
+                <td>
+                  <small>{recon.discount.adminFeePercentage}% admin (retained by Ltd)</small>
+                </td>
+                <td><small>{formatPrice(recon.discount.adminFeeAmount)}</small></td>
+                <td></td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr class="discount-row discount-row--indent">
+                <td>
+                  <small
+                    >{recon.discount.memberDiscountPercentage.toFixed(
+                      recon.discount.memberDiscountPercentage % 1 === 0 ? 0 : 1,
+                    )}% to members</small
+                  >
+                </td>
+                <td><small>−{formatPrice(recon.discount.memberDiscountAmount)}</small></td>
+                <td></td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td><strong>Nett goods value</strong></td>
+                <td><strong>{formatPrice(recon.orderTotals.net)}</strong></td>
+                <td><strong>{formatPrice(recon.orderTotals.vat)}</strong></td>
+                <td><strong>{formatPrice(recon.orderTotals.gross)}</strong></td>
+                <td></td>
+              </tr>
+            {:else}
+              <tr>
+                <td><strong>Total</strong></td>
+                <td><strong>{formatPrice(recon.orderTotals.net)}</strong></td>
+                <td><strong>{formatPrice(recon.orderTotals.vat)}</strong></td>
+                <td><strong>{formatPrice(recon.orderTotals.gross)}</strong></td>
+                <td></td>
+              </tr>
+            {/if}
             {#if parsedInvoice}
               <tr>
                 <td><em>Invoice {parsedInvoice.invoiceNumber}</em></td>
@@ -809,6 +996,57 @@
   .invoice-result {
     margin-top: 1rem;
     padding: 1rem;
+  }
+
+  .invoice-discount {
+    margin: 1rem 0;
+    padding: 0.75rem;
+    border-left: 3px solid var(--pico-primary, currentColor);
+  }
+
+  .invoice-discount label {
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+
+  .invoice-discount .admin-fee-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .admin-fee-label input {
+    margin-bottom: 0;
+  }
+
+  .discount-admin {
+    margin-bottom: 1rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .discount-admin p {
+    margin: 0 0 0.5rem 0;
+  }
+
+  .discount-admin__controls {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .discount-admin__controls button {
+    width: auto;
+    margin: 0;
+  }
+
+  .discount-row td {
+    border-top: 0;
+    color: var(--text-muted);
+  }
+
+  .discount-row--indent td:first-child {
+    padding-left: 2rem;
   }
 
   .summary-group {

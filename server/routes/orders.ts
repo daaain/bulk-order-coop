@@ -215,6 +215,12 @@ app.put('/:id', async (c) => {
   if (validated.name !== undefined) updateFields.name = validated.name;
   if (validated.deadline !== undefined) updateFields.deadline = validated.deadline;
   if (validated.status !== undefined) updateFields.status = validated.status;
+  if (validated.discountPercentage !== undefined) {
+    updateFields.discountPercentage = validated.discountPercentage;
+  }
+  if (validated.adminFeePercentage !== undefined) {
+    updateFields.adminFeePercentage = validated.adminFeePercentage;
+  }
 
   await db.update(orders).set(updateFields).where(eq(orders.id, orderId));
 

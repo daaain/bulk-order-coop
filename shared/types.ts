@@ -24,6 +24,24 @@ export interface Order {
   inviteCode: string;
   createdBy: string;
   createdAt: number;
+  discountPercentage: number | null;
+  adminFeePercentage: number | null;
+}
+
+/**
+ * Default admin-fee percentage retained by the Ltd when the order has no
+ * explicit adminFeePercentage set.
+ */
+export const DEFAULT_ADMIN_FEE_PERCENTAGE = 2;
+
+export interface OrderDiscountSummary {
+  discountPercentage: number;
+  adminFeePercentage: number;
+  memberDiscountPercentage: number;
+  subtotalBeforeDiscount: number;
+  discountAmount: number;
+  adminFeeAmount: number;
+  memberDiscountAmount: number;
 }
 
 export interface OrderItem {
@@ -174,4 +192,5 @@ export interface ReconciliationSummary {
   memberSummaries: MemberCostSummary[];
   orderTotals: { net: number; vat: number; gross: number };
   allConfirmed: boolean;
+  discount: OrderDiscountSummary | null;
 }
