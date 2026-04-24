@@ -2,6 +2,9 @@
   import type { PageData } from './$types';
   import { useAuth } from '$lib/auth.svelte';
   import { updateOrder, updateMemberRole } from '$lib/orders';
+  import { addItemToOrder, createClaim } from '$lib/claims';
+  import { loadCatalogue } from '$lib/catalogue';
+  import { parseInfinityOrderCsv, splitAmountRandomly } from '$shared/infinity-order';
   import ConfirmButton from '$lib/components/ConfirmButton.svelte';
 
   let { data }: { data: PageData } = $props();
@@ -169,6 +172,89 @@
     }
   }
 
+  // --- Infinity CSV import (testing tool, organiser-only, open orders) ---
+  let importCsv = $state('');
+  let importing = $state(false);
+  let importReport = $state<{
+    added: number;
+    claimsCreated: number;
+    skipped: { productCode: string; reason: string }[];
+  } | null>(null);
+  let importError = $state('');
+
+  async function handleImportInfinityCsv() {
+    importing = true;
+    importError = '';
+    importReport = null;
+    try {
+      const lines = parseInfinityOrderCsv(importCsv);
+      if (lines.length === 0) {
+        importError = 'No valid rows found — expected `productCode,cases` pairs.';
+        return;
+      }
+
+      const catalogue = await loadCatalogue(data.orderId, data.order.catalogueKey);
+      const byCode = new Map(catalogue.map((i) => [i.productCode, i]));
+      const memberIds = data.order.members.map((m) => m.memberId);
+
+      let added = 0;
+      let claimsCreated = 0;
+      const skipped: { productCode: string; reason: string }[] = [];
+
+      for (const line of lines) {
+        const item = byCode.get(line.productCode);
+        if (!item) {
+          skipped.push({ productCode: line.productCode, reason: 'not in catalogue' });
+          continue;
+        }
+
+        let orderItemId: string;
+        try {
+          const created = await addItemToOrder(data.orderId, item);
+          orderItemId = created.id;
+          added++;
+        } catch (err: unknown) {
+          skipped.push({
+            productCode: line.productCode,
+            reason: (err as Error).message || 'add failed',
+          });
+          continue;
+        }
+
+        const caseSize = (item.unitsPerCase ?? 1) * item.packSize;
+        const targetAmount = line.cases * caseSize;
+        const claimantCount = Math.min(
+          memberIds.length,
+          1 + Math.floor(Math.random() * Math.min(3, memberIds.length)),
+        );
+        const shuffled = [...memberIds].sort(() => Math.random() - 0.5);
+        const chosen = shuffled.slice(0, claimantCount);
+        const amounts = splitAmountRandomly(targetAmount, claimantCount);
+
+        for (let i = 0; i < chosen.length; i++) {
+          const amt = amounts[i];
+          if (amt <= 0) continue;
+          try {
+            await createClaim(data.orderId, orderItemId, amt, undefined, chosen[i]);
+            claimsCreated++;
+          } catch (err: unknown) {
+            skipped.push({
+              productCode: line.productCode,
+              reason: `claim for ${chosen[i]}: ${(err as Error).message || 'failed'}`,
+            });
+          }
+        }
+      }
+
+      importReport = { added, claimsCreated, skipped };
+      if (added > 0) importCsv = '';
+    } catch (err: unknown) {
+      importError = err instanceof Error ? err.message : 'Import failed';
+    } finally {
+      importing = false;
+    }
+  }
+
   async function advanceStatus() {
     const next = nextStatus[data.order.status];
     if (!next) return;
@@ -308,8 +394,69 @@
   </section>
 {/if}
 
+{#if isOrganiser && data.order.status === 'open'}
+  <section>
+    <details>
+      <summary><strong>Import order from Infinity CSV</strong> <small>(testing)</small></summary>
+      <p>
+        <small>
+          Paste a CSV in the same format the reconciliation page copies to the clipboard
+          (<code>productCode,cases</code> rows, with or without the header). Each row adds the
+          item to the order and creates claims for randomly-chosen members that sum to exactly the
+          requested number of cases.
+        </small>
+      </p>
+
+      <textarea
+        bind:value={importCsv}
+        disabled={importing}
+        rows="8"
+        placeholder={'Item number, Quantity\n1005,1\n100510,2'}
+        class="import-textarea"
+      ></textarea>
+
+      <button onclick={handleImportInfinityCsv} disabled={importing || !importCsv.trim()}>
+        {importing ? 'Importing…' : 'Import'}
+      </button>
+
+      {#if importError}
+        <p style="color: var(--color-terracotta);">{importError}</p>
+      {/if}
+
+      {#if importReport}
+        <article class="import-report">
+          <p>
+            Added <strong>{importReport.added}</strong> items,
+            created <strong>{importReport.claimsCreated}</strong> claims.
+          </p>
+          {#if importReport.skipped.length > 0}
+            <details>
+              <summary>{importReport.skipped.length} skipped</summary>
+              <ul>
+                {#each importReport.skipped as s, i (i)}
+                  <li><code>{s.productCode}</code> — {s.reason}</li>
+                {/each}
+              </ul>
+            </details>
+          {/if}
+        </article>
+      {/if}
+    </details>
+  </section>
+{/if}
+
 <style>
   .flex input[readonly] {
     margin-bottom: 0;
+  }
+
+  .import-textarea {
+    font-family: var(--pico-font-family-monospace, monospace);
+    font-size: 0.9em;
+  }
+
+  .import-report {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
   }
 </style>

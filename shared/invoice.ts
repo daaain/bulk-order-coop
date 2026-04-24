@@ -268,12 +268,39 @@ function firstMoneyValue(
   return null;
 }
 
+/**
+ * Extract a percentage from a row that contains a "Discount" label. Handles
+ * both shapes Infinity Foods uses — `"6% Discount"` (one token) or
+ * `"6  %  Discount"` (separate tokens) — and ignores unrelated `N%` tokens
+ * that can appear earlier in the row (e.g. the VAT-rate header
+ * `"0%  5%  20%"`).
+ */
+function extractDiscountPercentage(row: PositionedRow): number {
+  const discountIdx = row.tokens.findIndex(
+    (t) => t.str === 'Discount' || t.str === 'discount',
+  );
+  if (discountIdx === -1) return 0;
+
+  // Walk left from the Discount label and take the first percentage we find.
+  for (let i = discountIdx - 1; i >= 0; i--) {
+    const t = row.tokens[i];
+    const single = t.str.match(/^(\d+(?:\.\d+)?)%$/);
+    if (single) return parseFloat(single[1]);
+    if (t.str === '%') {
+      const prev = row.tokens[i - 1];
+      if (prev && /^\d+(?:\.\d+)?$/.test(prev.str)) return parseFloat(prev.str);
+    }
+  }
+  return 0;
+}
+
 function parseTotals(rows: PositionedRow[]): InvoiceTotals {
   let subtotal = 0;
   let discountPercentage = 0;
   let discountAmount = 0;
   let nettGoodsValue = 0;
   let vat = 0;
+  let bareTotalValue = 0;
   let totalPayable = 0;
   let cases = 0;
   let totalWeight = '';
@@ -281,6 +308,14 @@ function parseTotals(rows: PositionedRow[]): InvoiceTotals {
   // Parse from the last page where totals appear
   const lastPage = Math.max(...rows.map((r) => r.page));
   const lastPageRows = rows.filter((r) => r.page === lastPage);
+
+  // Pre-pass: detect whether an explicit "TOTAL PAYABLE" row exists anywhere
+  // on the last page. When it does, a bare "TOTAL" label denotes the
+  // pre-discount subtotal (picked-invoice format). Otherwise a bare "TOTAL"
+  // is the final total (order-confirmation format).
+  const hasTotalPayableRow = lastPageRows.some((r) =>
+    r.tokens.map((t) => t.str).join(' ').includes('TOTAL PAYABLE'),
+  );
 
   for (const row of lastPageRows) {
     const text = row.tokens.map((t) => t.str).join(' ');
@@ -292,16 +327,12 @@ function parseTotals(rows: PositionedRow[]): InvoiceTotals {
       if (v !== null) subtotal = v;
     }
 
-    // Discount row — e.g. "6% Discount  110.01  2.55". Extract the percentage
-    // and the first £/numeric amount.
+    // Discount row — e.g. "6% Discount  110.01  2.55" or
+    // "6 % Discount  £108.73  £2.55". Extract the percentage and the first
+    // £/numeric amount.
     if (row.tokens.some((t) => t.str === 'Discount' || t.str === 'discount')) {
-      for (const t of row.tokens) {
-        const m = t.str.match(/^(\d+(?:\.\d+)?)%$/);
-        if (m) {
-          discountPercentage = parseFloat(m[1]);
-          break;
-        }
-      }
+      const pct = extractDiscountPercentage(row);
+      if (pct > 0) discountPercentage = pct;
       const v = firstMoneyValue(row);
       if (v !== null) discountAmount = v;
     }
@@ -312,16 +343,17 @@ function parseTotals(rows: PositionedRow[]): InvoiceTotals {
       if (v !== null) nettGoodsValue = v;
     }
 
-    // TOTAL row — accept either "TOTAL PAYABLE" or a bare "TOTAL" token
-    // (Infinity Foods uses the latter when a discount is applied).
-    const hasTotalPayable = text.includes('TOTAL PAYABLE');
-    const hasBareTotal =
-      !hasTotalPayable &&
-      !text.includes('SUBTOTAL') &&
-      row.tokens.some((t) => t.str === 'TOTAL');
-    if (hasTotalPayable || hasBareTotal) {
+    // TOTAL PAYABLE row — final total (picked-invoice format).
+    if (text.includes('TOTAL PAYABLE')) {
       const v = firstMoneyValue(row);
       if (v !== null) totalPayable = v;
+    } else if (
+      // Bare "TOTAL" row — semantic depends on the surrounding labels.
+      !text.includes('SUBTOTAL') &&
+      row.tokens.some((t) => t.str === 'TOTAL')
+    ) {
+      const v = firstMoneyValue(row);
+      if (v !== null) bareTotalValue = v;
     }
 
     // VAT row (standalone "VAT" label in totals area, not the column header)
@@ -354,8 +386,19 @@ function parseTotals(rows: PositionedRow[]): InvoiceTotals {
     }
   }
 
-  // Invoices without an explicit SUBTOTAL row (no discount applied): the
-  // subtotal equals the nett goods value.
+  // Resolve the bare "TOTAL" row based on context:
+  //   • with an explicit TOTAL PAYABLE elsewhere → bare TOTAL is the subtotal
+  //   • otherwise → bare TOTAL is the final total
+  if (bareTotalValue > 0) {
+    if (hasTotalPayableRow) {
+      if (subtotal === 0) subtotal = bareTotalValue;
+    } else if (totalPayable === 0) {
+      totalPayable = bareTotalValue;
+    }
+  }
+
+  // Invoices without an explicit SUBTOTAL/TOTAL row (no discount applied):
+  // the subtotal equals the nett goods value plus any discount.
   if (subtotal === 0 && nettGoodsValue > 0) {
     subtotal = nettGoodsValue + discountAmount;
   }

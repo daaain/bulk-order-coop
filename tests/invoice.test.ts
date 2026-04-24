@@ -381,6 +381,78 @@ describe('parseInvoice — totals with discount', () => {
   });
 });
 
+describe('parseInvoice — totals on picked-invoice (post-delivery) format', () => {
+  // Picked-invoice layout. Key differences from the order-confirmation form:
+  //   • "TOTAL" is the *subtotal*; the final line is "TOTAL PAYABLE"
+  //   • Discount percentage is split into two tokens (e.g. "6" and "%")
+  //   • A VAT-rate header row "0% 5% 20%" sits above the discount row
+  function pickedInvoiceTotals(): PositionedTextItem[] {
+    return [
+      // TOTAL (subtotal) — bare "TOTAL" label, net and VAT columns
+      item('TOTAL', 432, 568),
+      item('£1812.05', 500, 568),
+      item('£42.55', 547, 568),
+      // VAT-rate header + discount row — same y, left-to-right
+      item('0%', 92, 552),
+      item('5%', 130, 552),
+      item('20%', 176, 552),
+      item('6', 403, 552),
+      item('%', 414, 552),
+      item('Discount', 427, 552),
+      item('£108.73', 504, 552),
+      item('£2.55', 551, 552),
+      item('NETT GOODS VALUE', 395, 537),
+      item('£1703.32', 500, 537),
+      item('VAT', 439, 522),
+      item('£40.00', 509, 522),
+      item('TOTAL PAYABLE', 406, 507),
+      item('£1743.32', 500, 507),
+    ];
+  }
+
+  function makePickedInvoice(...itemRows: PositionedTextItem[][]): PositionedTextItem[] {
+    const header = [
+      item('INVOICE', 224, 806),
+      item('Pangolin Collective Ltd - Leyton', 372, 806),
+      item('695414', 231, 785),
+      item('27/4/26', 540, 752),
+    ];
+    const columnHeaders = [
+      item('code', 19, 737),
+      item('product', 140, 737),
+    ];
+    return [...header, ...columnHeaders, ...itemRows.flat(), ...pickedInvoiceTotals()];
+  }
+
+  it('extracts subtotal from a bare "TOTAL" row when a TOTAL PAYABLE row is also present', () => {
+    const invoice = parseInvoice(makePickedInvoice(chiaRow()));
+    expect(invoice.totals.subtotal).toBe(1812.05);
+  });
+
+  it('extracts discountPercentage from split "N" "%" tokens next to "Discount"', () => {
+    const invoice = parseInvoice(makePickedInvoice(chiaRow()));
+    expect(invoice.totals.discountPercentage).toBe(6);
+  });
+
+  it('ignores the VAT-rate header "0% 5% 20%" when reading the discount percentage', () => {
+    const invoice = parseInvoice(makePickedInvoice(chiaRow()));
+    // Must not be 0 (the first % token on the discount row).
+    expect(invoice.totals.discountPercentage).not.toBe(0);
+    expect(invoice.totals.discountPercentage).toBe(6);
+  });
+
+  it('extracts discountAmount from the £-prefixed token', () => {
+    const invoice = parseInvoice(makePickedInvoice(chiaRow()));
+    expect(invoice.totals.discountAmount).toBe(108.73);
+  });
+
+  it('extracts NETT GOODS VALUE and final TOTAL PAYABLE', () => {
+    const invoice = parseInvoice(makePickedInvoice(chiaRow()));
+    expect(invoice.totals.nettGoodsValue).toBe(1703.32);
+    expect(invoice.totals.totalPayable).toBe(1743.32);
+  });
+});
+
 describe('parseInvoice — real fixture PDF', () => {
   let invoice: ParsedInvoice;
 

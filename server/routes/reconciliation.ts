@@ -503,9 +503,10 @@ app.post('/:id/allocate', async (c) => {
     }
   }
 
-  // Batch insert allocations
-  if (allNewAllocations.length > 0) {
-    await db.insert(allocations).values(allNewAllocations);
+  // Batch insert allocations — D1 caps SQL variables per statement, so chunk
+  const CHUNK_SIZE = 10;
+  for (let i = 0; i < allNewAllocations.length; i += CHUNK_SIZE) {
+    await db.insert(allocations).values(allNewAllocations.slice(i, i + CHUNK_SIZE));
   }
 
   return c.json({ count: allNewAllocations.length });
