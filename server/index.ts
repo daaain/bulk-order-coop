@@ -19,6 +19,20 @@ const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
 
 app.use('/*', cors());
 
+// Surface unhandled errors as JSON with the underlying message, rather than
+// Cloudflare's opaque "Internal Server Error". The full error (including
+// stack) is also logged to console so it shows up in `wrangler tail`.
+app.onError((err, c) => {
+  console.error('Unhandled error:', err);
+  return c.json(
+    {
+      error: err.message || 'Internal server error',
+      name: err.name,
+    },
+    500,
+  );
+});
+
 app.get('/health', (c) => c.json({ status: 'ok' }));
 
 app.route('/auth', authRoutes);

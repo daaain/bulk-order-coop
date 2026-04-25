@@ -61,12 +61,12 @@ test.describe('Invoice-driven reconciliation', () => {
     await page.click('button:has-text("Yes")');
     await expect(page.getByText('reconciling').first()).toBeVisible({ timeout: 15000 });
 
-    // 5. Navigate to reconciliation page
-    await page.click('a:has-text("Reconciliation")');
-    await page.waitForURL(/\/reconciliation/);
+    // 5. Navigate to invoice phase
+    await page.click('a:has-text("Invoice")');
+    await page.waitForURL(/\/invoice/);
 
     // Wait for the page to be ready
-    await expect(page.locator('button:has-text("Mark all as arrived")')).toBeVisible({
+    await expect(page.locator('input#invoice-pdf')).toBeVisible({
       timeout: 15000,
     });
 
@@ -104,18 +104,23 @@ test.describe('Invoice-driven reconciliation', () => {
     await expect(allocateBtn).toBeVisible({ timeout: 15000 });
     await allocateBtn.click();
 
+    // 10. Move to delivery phase
+    await page.click('a:has-text("Delivery")');
+    await page.waitForURL(/\/delivery/);
     await expect(page.locator('details').first()).toBeVisible({ timeout: 30000 });
 
-    // 11. Confirm all allocations
-    const confirmAllBtn = page.locator('button:has-text("Confirm all my allocations")');
+    // 11. Confirm pickup of all my items
+    const confirmAllBtn = page.locator('button:has-text("I\'ve collected everything")');
     await expect(confirmAllBtn).toBeVisible({ timeout: 15000 });
     await confirmAllBtn.click();
-    await expect(page.getByText('Confirmed').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('mark.badge-open:has-text("Collected")').first()).toBeVisible({
+      timeout: 15000,
+    });
 
-    // 12. Mark order complete
-    await page.click('a:has-text("Dashboard")');
-    await page.waitForURL(/\/orders\/[a-zA-Z0-9_-]+$/);
-    await page.click('button:has-text("Mark complete")');
+    // 12. Mark order complete from the delivery page
+    const markCompleteBtn = page.locator('button:has-text("Mark order complete")');
+    await expect(markCompleteBtn).toBeVisible({ timeout: 15000 });
+    await markCompleteBtn.click();
     await page.click('button:has-text("Yes")');
     await expect(page.getByText('complete').first()).toBeVisible({ timeout: 15000 });
   });

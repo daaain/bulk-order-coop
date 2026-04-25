@@ -37,6 +37,37 @@ export function getCaseIncrement(
   return undefined;
 }
 
+export function isPackaged(unitsPerCase: number | null): boolean {
+  return unitsPerCase != null && unitsPerCase > 0;
+}
+
+function toPacks(amount: number, packSize: number): number {
+  return packSize > 0 ? Math.round(amount / packSize) : amount;
+}
+
+export function formatClaimAmount(
+  amount: number,
+  unitsPerCase: number | null,
+  packSize: number,
+  unit: string,
+): string {
+  if (isPackaged(unitsPerCase)) {
+    const packs = toPacks(amount, packSize);
+    return `${packs} pack${packs === 1 ? '' : 's'}`;
+  }
+  return `${amount}${unit}`;
+}
+
+export function formatClaimDelta(
+  delta: number,
+  unitsPerCase: number | null,
+  packSize: number,
+  unit: string,
+): string {
+  const sign = delta >= 0 ? '+' : '-';
+  return `${sign}${formatClaimAmount(Math.abs(delta), unitsPerCase, packSize, unit)}`;
+}
+
 export function calculateCasePriceGross(
   casePrice: number,
   vatPerCase: number,

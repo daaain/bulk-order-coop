@@ -246,6 +246,32 @@ app.put('/:id/items/:itemId/swap', async (c) => {
     return c.json({ error: 'Item not found' }, 404);
   }
 
+  // Once the invoice has been processed (i.e. any delivery rows exist for the
+  // order), member-initiated swaps no longer make sense — Infinity has already
+  // picked the order. Substitutions from this point are recorded via delivery
+  // status, not by replacing items.
+  const orderItemIds = (
+    await db
+      .select({ id: orderItems.id })
+      .from(orderItems)
+      .where(eq(orderItems.orderId, orderId))
+  ).map((r) => r.id);
+
+  if (orderItemIds.length > 0) {
+    const [anyDelivery] = await db
+      .select({ orderItemId: deliveryItems.orderItemId })
+      .from(deliveryItems)
+      .where(inArray(deliveryItems.orderItemId, orderItemIds))
+      .limit(1);
+
+    if (anyDelivery) {
+      return c.json(
+        { error: 'Cannot swap items after the invoice has been processed' },
+        400,
+      );
+    }
+  }
+
   const validated = validateAddItem(body);
   if ('error' in validated) {
     return c.json({ error: validated.error }, 400);

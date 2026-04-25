@@ -2,19 +2,15 @@
   import { untrack } from 'svelte';
   import type { LayoutData } from '../$types';
   import { useAuth } from '$lib/auth.svelte';
-  import { formatPrice, formatWeight, formatCaseSize } from '$lib/format';
+  import { formatClaimAmount, formatPrice, formatCaseSize } from '$lib/format';
   import { updateOrder } from '$lib/orders';
-  import ConfirmButton from '$lib/components/ConfirmButton.svelte';
   import {
     fetchReconciliation,
     updateDeliveryStatus,
     generateAllocations,
-    confirmAllocation,
-    confirmAllMyAllocations,
   } from '$lib/reconciliation';
   import { loadInvoiceFromFile } from '$lib/invoice-loader';
   import { matchInvoiceToOrder } from '$shared/invoice-matching';
-  import { formatInfinityOrderCsv } from '$shared/infinity-order';
   import type {
     InvoiceMatchResult,
     DeliveryUpdate,
@@ -25,8 +21,6 @@
     ReconciliationSummary,
     ReconciliationItem,
     DeliveryStatus,
-    MemberCostSummary,
-    RoundingStatus,
   } from '$shared/types';
 
   let { data }: { data: LayoutData } = $props();
@@ -38,29 +32,20 @@
   let error = $state('');
   let saving = $state(false);
   let allocating = $state(false);
-  let confirming = $state(false);
-  let completing = $state(false);
   let parsedInvoice = $state<ParsedInvoice | null>(null);
   let invoiceResult = $state<InvoiceMatchResult | null>(null);
   let parsingInvoice = $state(false);
   let applyingInvoice = $state(false);
   let invoiceError = $state('');
-  let infinityCopied = $state(false);
 
-  // When an invoice carrying a wholesale discount is uploaded, these drive
-  // the "apply to order" form in the invoice-result panel. Defaults: apply
-  // the discount and retain 2pp for admin.
   let applyDiscountChecked = $state(true);
   let adminFeeInput = $state(2);
   let adminFeeEdit = $state<number | null>(null);
   let savingDiscount = $state(false);
+  let bulkMarking = $state(false);
 
   const isOrganiser = $derived(
     data.order.members.some((m) => m.memberId === auth.user?.id && m.role === 'organiser'),
-  );
-
-  const isReconciling = $derived(
-    data.order.status === 'reconciling' || data.order.status === 'complete',
   );
 
   const isReadOnly = $derived(data.order.status === 'complete');
@@ -85,70 +70,9 @@
     different_price: 'var(--delivery-partial-bg)',
   };
 
-  const ROUNDING_STATUS_ORDER: RoundingStatus[] = ['ready', 'nearly', 'needs_more', 'over'];
-  const roundingStatusLabels: Record<RoundingStatus, string> = {
-    ready: 'Ready to order',
-    nearly: 'Nearly there',
-    needs_more: 'Needs more takers',
-    over: 'Over — flexible members can reduce',
-  };
-
-  function itemGross(item: ReconciliationItem): number {
-    const { casePrice, vatPerCase } = item.catalogueItem;
-    return (casePrice + vatPerCase) * item.rounding.casesNeeded;
-  }
-
-  type OrderSummaryGroup = {
-    status: RoundingStatus;
-    items: ReconciliationItem[];
-    subtotal: number;
-  };
-
-  const summaryItems = $derived<ReconciliationItem[]>(
-    recon ? recon.items.filter((i) => i.rounding.casesNeeded > 0) : [],
-  );
-
-  const summaryGroups = $derived.by<OrderSummaryGroup[]>(() => {
-    const buckets = new Map<RoundingStatus, ReconciliationItem[]>();
-    for (const item of summaryItems) {
-      const arr = buckets.get(item.rounding.status) ?? [];
-      arr.push(item);
-      buckets.set(item.rounding.status, arr);
-    }
-    return ROUNDING_STATUS_ORDER.filter((s) => buckets.has(s)).map((status) => {
-      const items = buckets.get(status)!;
-      const subtotal = items.reduce((sum, i) => sum + itemGross(i), 0);
-      return { status, items, subtotal };
-    });
-  });
-
-  const summaryTotal = $derived(summaryItems.reduce((sum, i) => sum + itemGross(i), 0));
-
-  async function copyInfinityOrder() {
-    if (!recon) return;
-    const lines = recon.items
-      .filter((i) => i.rounding.status === 'ready')
-      .map((i) => ({
-        productCode: i.orderItem.productCode,
-        cases: i.rounding.casesNeeded,
-      }));
-    const csv = formatInfinityOrderCsv(lines);
-    try {
-      await navigator.clipboard.writeText(csv);
-      infinityCopied = true;
-      setTimeout(() => (infinityCopied = false), 2000);
-    } catch {
-      // Clipboard API unavailable (non-secure context, etc.)
-    }
-  }
-
   let debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   async function loadReconciliation() {
-    // Only show the full-page loading state on the very first fetch.
-    // Subsequent refreshes keep the existing data visible so the UI doesn't
-    // flicker (and so e.g. form elements don't briefly unmount, which can
-    // race with user interactions and tests).
     if (!recon) loading = true;
     error = '';
     try {
@@ -190,7 +114,7 @@
 
   async function markAllArrived() {
     if (!recon) return;
-    saving = true;
+    bulkMarking = true;
     error = '';
     try {
       for (const item of recon.items) {
@@ -204,7 +128,7 @@
     } catch (err: unknown) {
       error = (err as Error).message || 'Failed to mark all as arrived';
     } finally {
-      saving = false;
+      bulkMarking = false;
     }
   }
 
@@ -230,14 +154,12 @@
       }));
       parsedInvoice = invoice;
       invoiceResult = matchInvoiceToOrder(invoice, orderItems);
-      // Reset apply-discount controls to sensible defaults for the new invoice.
       applyDiscountChecked = invoice.totals.discountPercentage > 0;
       adminFeeInput = data.order.adminFeePercentage ?? 2;
     } catch (err: unknown) {
       invoiceError = (err as Error).message || 'Failed to parse invoice';
     } finally {
       parsingInvoice = false;
-      // Reset input so the same file can be re-selected after edits
       input.value = '';
     }
   }
@@ -326,45 +248,6 @@
     }
   }
 
-  async function handleConfirm(allocationId: string) {
-    confirming = true;
-    error = '';
-    try {
-      await confirmAllocation(data.orderId, allocationId);
-      await loadReconciliation();
-    } catch (err: unknown) {
-      error = (err as Error).message || 'Failed to confirm allocation';
-    } finally {
-      confirming = false;
-    }
-  }
-
-  async function handleConfirmAll() {
-    confirming = true;
-    error = '';
-    try {
-      await confirmAllMyAllocations(data.orderId);
-      await loadReconciliation();
-    } catch (err: unknown) {
-      error = (err as Error).message || 'Failed to confirm allocations';
-    } finally {
-      confirming = false;
-    }
-  }
-
-  async function handleMarkComplete() {
-    completing = true;
-    error = '';
-    try {
-      await updateOrder(data.orderId, { status: 'complete' });
-      location.reload();
-    } catch (err: unknown) {
-      error = (err as Error).message || 'Failed to mark order complete';
-    } finally {
-      completing = false;
-    }
-  }
-
   function setDeliveryStatus(item: ReconciliationItem, status: DeliveryStatus) {
     if (!item.delivery) {
       item.delivery = {
@@ -380,10 +263,6 @@
     handleDeliveryChange(item.orderItem.id, item);
   }
 
-  function myAllocations(summary: MemberCostSummary): boolean {
-    return summary.memberId === auth.user?.id;
-  }
-
   $effect(() => {
     if (data.orderId) {
       untrack(() => loadReconciliation());
@@ -392,13 +271,17 @@
 </script>
 
 <svelte:head>
-  <title>Reconciliation — {data.order.name}</title>
+  <title>Invoice — {data.order.name}</title>
 </svelte:head>
 
-<h1 class="animate-in">Reconciliation</h1>
+<h1 class="animate-in">Invoice & payment</h1>
+<p>
+  Infinity has picked the order at the warehouse. Upload the final invoice to record what's being
+  delivered, apply any wholesale discount, then generate allocations so members can pay.
+</p>
 
 {#if loading}
-  <p aria-busy="true">Loading reconciliation data...</p>
+  <p aria-busy="true">Loading invoice data...</p>
 {:else if error && !recon}
   <p><mark>{error}</mark></p>
 {:else if recon}
@@ -406,162 +289,110 @@
     <p><mark>{error}</mark></p>
   {/if}
 
-  {#if !isReadOnly}
-    <!-- Order summary (pre-finalisation) -->
+  {#if !isReadOnly && isOrganiser}
     <section>
       <hgroup>
-        <h2>Order summary</h2>
-        <p>The full order to place with Infinity. Only complete-case items are copied.</p>
+        <h2>Invoice upload</h2>
+        <p>Auto-populates the items table from the supplier's PDF invoice.</p>
       </hgroup>
 
-      <div class="action-bar">
-        <button onclick={copyInfinityOrder} data-testid="copy-infinity">
-          {infinityCopied ? 'Copied!' : 'Copy for Infinity'}
-        </button>
+      <div class="invoice-upload">
+        <label for="invoice-pdf"><strong>Upload invoice PDF</strong></label>
+        <input
+          id="invoice-pdf"
+          type="file"
+          accept="application/pdf,.pdf"
+          onchange={handleInvoiceUpload}
+          disabled={parsingInvoice || applyingInvoice}
+        />
+        {#if parsingInvoice}
+          <small aria-busy="true">Parsing invoice...</small>
+        {/if}
+        {#if invoiceError}
+          <small><mark>{invoiceError}</mark></small>
+        {/if}
       </div>
 
-      {#if summaryItems.length === 0}
-        <p>Nothing to order yet — no items have reached a full case.</p>
-      {:else}
-        <figure>
-          <table>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>Cases</th>
-                <th>Claimed / case total</th>
-                <th>Est. cost</th>
-              </tr>
-            </thead>
-            {#each summaryGroups as group (group.status)}
-              <tbody class="summary-group status-{group.status}">
-                <tr class="group-header">
-                  <th colspan="4">{roundingStatusLabels[group.status]}</th>
-                </tr>
-                {#each group.items as i (i.orderItem.id)}
-                  <tr class="summary-row">
-                    <td>{i.catalogueItem.description}</td>
-                    <td>{i.rounding.casesNeeded}</td>
-                    <td>
-                      {i.rounding.totalClaimed}{i.catalogueItem.unit}
-                      / {i.rounding.casesNeeded * i.rounding.caseSize}{i.catalogueItem.unit}
-                    </td>
-                    <td>{formatPrice(itemGross(i))}</td>
-                  </tr>
+      {#if invoiceResult && parsedInvoice}
+        {@const invoiceDiscountPct = parsedInvoice.totals.discountPercentage}
+        {@const memberPct = Math.max(0, invoiceDiscountPct - adminFeeInput)}
+        <article class="invoice-result">
+          <header>
+            <strong>Invoice {parsedInvoice.invoiceNumber}</strong> — {parsedInvoice.date}
+          </header>
+          <p>
+            <span data-testid="invoice-matched">{invoiceResult.matched.length} matched</span>,
+            <span data-testid="invoice-missing">{invoiceResult.missing.length} missing</span>,
+            <span data-testid="invoice-only">{invoiceResult.invoiceOnly.length} invoice-only</span>
+          </p>
+          {#if invoiceResult.invoiceOnly.length > 0}
+            <details>
+              <summary>Invoice items not on order</summary>
+              <ul>
+                {#each invoiceResult.invoiceOnly as line (line.productCode)}
+                  <li>
+                    {line.productCode} — {line.description} ({line.invoiced} ×
+                    {formatPrice(line.unitPrice ?? line.cost)})
+                  </li>
                 {/each}
-                <tr class="group-subtotal">
-                  <td colspan="2"></td>
-                  <td><strong>Subtotal</strong></td>
-                  <td>{formatPrice(group.subtotal)}</td>
-                </tr>
-              </tbody>
-            {/each}
-            <tfoot>
-              <tr>
-                <td colspan="2"></td>
-                <td><strong>Total</strong></td>
-                <td><strong>{formatPrice(summaryTotal)}</strong></td>
-              </tr>
-            </tfoot>
-          </table>
-        </figure>
+              </ul>
+            </details>
+          {/if}
+
+          {#if invoiceDiscountPct > 0}
+            <div class="invoice-discount" data-testid="invoice-discount">
+              <label>
+                <input type="checkbox" bind:checked={applyDiscountChecked} role="switch" />
+                Apply <strong>{invoiceDiscountPct}% discount</strong>
+                ({formatPrice(parsedInvoice.totals.discountAmount)}) to this order
+              </label>
+              {#if applyDiscountChecked}
+                <label class="admin-fee-label">
+                  Admin fee (%)
+                  <input
+                    type="number"
+                    min="0"
+                    max={invoiceDiscountPct}
+                    step="0.1"
+                    bind:value={adminFeeInput}
+                    class="table-input table-input--narrow"
+                  />
+                </label>
+                <small>
+                  Members receive <strong>{memberPct.toFixed(memberPct % 1 === 0 ? 0 : 1)}%</strong>
+                  off each line; the Ltd retains the equivalent of {adminFeeInput}%.
+                </small>
+              {/if}
+            </div>
+          {/if}
+
+          <button onclick={applyInvoice} disabled={applyingInvoice} aria-busy={applyingInvoice}>
+            Apply invoice
+          </button>
+        </article>
       {/if}
     </section>
   {/if}
 
-  {#if isReconciling}
-  <!-- Delivery status table -->
   <section>
     <hgroup>
-      <h2>Delivery status</h2>
-      <p>Record what actually arrived for each item</p>
+      <h2>Items being delivered</h2>
+      <p>
+        Review what Infinity is sending. Adjust any rows where the invoice match needs correcting.
+      </p>
     </hgroup>
 
-    {#if !isReadOnly}
+    {#if !isReadOnly && isOrganiser}
       <div class="action-bar">
-        <button class="outline" onclick={markAllArrived} disabled={saving} aria-busy={saving}>
+        <button
+          class="outline"
+          onclick={markAllArrived}
+          disabled={bulkMarking}
+          aria-busy={bulkMarking}
+        >
           Mark all as arrived
         </button>
-
-        {#if isOrganiser}
-          <div class="invoice-upload">
-            <label for="invoice-pdf"><strong>Upload invoice PDF</strong></label>
-            <input
-              id="invoice-pdf"
-              type="file"
-              accept="application/pdf,.pdf"
-              onchange={handleInvoiceUpload}
-              disabled={parsingInvoice || applyingInvoice}
-            />
-            {#if parsingInvoice}
-              <small aria-busy="true">Parsing invoice...</small>
-            {/if}
-            {#if invoiceError}
-              <small><mark>{invoiceError}</mark></small>
-            {/if}
-          </div>
-
-          {#if invoiceResult && parsedInvoice}
-            {@const invoiceDiscountPct = parsedInvoice.totals.discountPercentage}
-            {@const memberPct = Math.max(0, invoiceDiscountPct - adminFeeInput)}
-            <article class="invoice-result">
-              <header>
-                <strong>Invoice {parsedInvoice.invoiceNumber}</strong> — {parsedInvoice.date}
-              </header>
-              <p>
-                <span data-testid="invoice-matched">{invoiceResult.matched.length} matched</span>,
-                <span data-testid="invoice-missing">{invoiceResult.missing.length} missing</span>,
-                <span data-testid="invoice-only"
-                  >{invoiceResult.invoiceOnly.length} invoice-only</span
-                >
-              </p>
-              {#if invoiceResult.invoiceOnly.length > 0}
-                <details>
-                  <summary>Invoice items not on order</summary>
-                  <ul>
-                    {#each invoiceResult.invoiceOnly as line (line.productCode)}
-                      <li>
-                        {line.productCode} — {line.description} ({line.invoiced} ×
-                        {formatPrice(line.unitPrice ?? line.cost)})
-                      </li>
-                    {/each}
-                  </ul>
-                </details>
-              {/if}
-
-              {#if invoiceDiscountPct > 0}
-                <div class="invoice-discount" data-testid="invoice-discount">
-                  <label>
-                    <input type="checkbox" bind:checked={applyDiscountChecked} role="switch" />
-                    Apply <strong>{invoiceDiscountPct}% discount</strong>
-                    ({formatPrice(parsedInvoice.totals.discountAmount)}) to this order
-                  </label>
-                  {#if applyDiscountChecked}
-                    <label class="admin-fee-label">
-                      Admin fee (%)
-                      <input
-                        type="number"
-                        min="0"
-                        max={invoiceDiscountPct}
-                        step="0.1"
-                        bind:value={adminFeeInput}
-                        class="table-input table-input--narrow"
-                      />
-                    </label>
-                    <small>
-                      Members receive <strong>{memberPct.toFixed(memberPct % 1 === 0 ? 0 : 1)}%</strong> off
-                      each line; the Ltd retains the equivalent of {adminFeeInput}%.
-                    </small>
-                  {/if}
-                </div>
-              {/if}
-
-              <button onclick={applyInvoice} disabled={applyingInvoice} aria-busy={applyingInvoice}>
-                Apply invoice
-              </button>
-            </article>
-          {/if}
-        {/if}
+        <small>Use this if you trust Infinity to send everything as ordered (no PDF invoice).</small>
       </div>
     {/if}
 
@@ -583,14 +414,21 @@
             {@const bgColour = item.delivery ? statusColours[item.delivery.status] : 'transparent'}
             <tr style="background: {bgColour};">
               <td>{item.catalogueItem.description}</td>
-              <td
-                >{formatCaseSize(
+              <td>
+                {formatCaseSize(
                   item.catalogueItem.unitsPerCase,
                   item.catalogueItem.packSize,
                   item.catalogueItem.unit,
-                )}</td
-              >
-              <td>{item.rounding.totalClaimed}{item.catalogueItem.unit}</td>
+                )}
+              </td>
+              <td>
+                {formatClaimAmount(
+                  item.rounding.totalClaimed,
+                  item.catalogueItem.unitsPerCase,
+                  item.catalogueItem.packSize,
+                  item.catalogueItem.unit,
+                )}
+              </td>
               <td>
                 {#if isReadOnly}
                   {item.delivery?.status ?? '–'}
@@ -676,7 +514,6 @@
     {/if}
   </section>
 
-  <!-- Generate allocations button -->
   {#if !isReadOnly && isOrganiser && allDeliverySet && !hasAllocations}
     <section>
       <button onclick={handleGenerateAllocations} disabled={allocating} aria-busy={allocating}>
@@ -699,100 +536,7 @@
     </section>
   {/if}
 
-  <!-- Allocations per member -->
   {#if hasAllocations}
-    <section>
-      <h2>Allocations</h2>
-
-      {#each recon.memberSummaries as summary (summary.memberId)}
-        {@const isMine = myAllocations(summary)}
-        <details open={isMine}>
-          <summary>
-            <strong>{summary.memberName ?? summary.memberInitials ?? 'Unknown'}</strong>
-            — {formatPrice(summary.totals.gross)}
-            {#if summary.allConfirmed}
-              <mark class="badge-open" style="margin-left: 0.5rem;">Confirmed</mark>
-            {/if}
-          </summary>
-
-          <figure>
-            <table>
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th>Claimed</th>
-                  <th>Allocated</th>
-                  <th>Amount</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each summary.items as alloc (alloc.orderItemId)}
-                  <tr>
-                    <td>{alloc.description}</td>
-                    <td>{alloc.claimed}</td>
-                    <td>
-                      {alloc.allocated}
-                      {#if alloc.allocated !== alloc.claimed}
-                        <small style="color: var(--color-terracotta);">
-                          ({alloc.allocated > alloc.claimed ? '+' : ''}{(
-                            alloc.allocated - alloc.claimed
-                          ).toFixed(1)})
-                        </small>
-                      {/if}
-                    </td>
-                    <td>{formatPrice(alloc.gross)}</td>
-                    <td>
-                      {#if alloc.confirmed}
-                        Confirmed
-                      {:else if isMine && !isReadOnly}
-                        {@const reconItem = recon?.items.find(
-                          (i) => i.orderItem.id === alloc.orderItemId,
-                        )}
-                        {@const allocation = reconItem?.allocations.find(
-                          (a) => a.memberId === summary.memberId,
-                        )}
-                        {#if allocation}
-                          <button
-                            class="outline confirm-btn"
-                            onclick={() => handleConfirm(allocation.id)}
-                            disabled={confirming}
-                          >
-                            Confirm
-                          </button>
-                        {/if}
-                      {:else}
-                        Pending
-                      {/if}
-                    </td>
-                  </tr>
-                {/each}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colspan="3"></td>
-                  <td><strong>{formatPrice(summary.totals.gross)}</strong></td>
-                  <td></td>
-                </tr>
-              </tfoot>
-            </table>
-          </figure>
-
-          {#if isMine && !isReadOnly && !summary.allConfirmed}
-            <button
-              class="confirm-all-btn"
-              onclick={handleConfirmAll}
-              disabled={confirming}
-              aria-busy={confirming}
-            >
-              Confirm all my allocations
-            </button>
-          {/if}
-        </details>
-      {/each}
-    </section>
-
-    <!-- Summary footer -->
     <section>
       <h2>Order totals</h2>
 
@@ -839,7 +583,11 @@
               <button onclick={saveAdminFee} disabled={savingDiscount} aria-busy={savingDiscount}>
                 Save
               </button>
-              <button class="outline" onclick={() => (adminFeeEdit = null)} disabled={savingDiscount}>
+              <button
+                class="outline"
+                onclick={() => (adminFeeEdit = null)}
+                disabled={savingDiscount}
+              >
                 Cancel
               </button>
             {/if}
@@ -855,7 +603,6 @@
               <th>Net</th>
               <th>VAT</th>
               <th>Gross</th>
-              <th>Status</th>
             </tr>
           </thead>
           <tbody>
@@ -865,13 +612,6 @@
                 <td>{formatPrice(summary.totals.net)}</td>
                 <td>{formatPrice(summary.totals.vat)}</td>
                 <td>{formatPrice(summary.totals.gross)}</td>
-                <td>
-                  {#if summary.allConfirmed}
-                    <mark class="badge-open">Confirmed</mark>
-                  {:else}
-                    Pending
-                  {/if}
-                </td>
               </tr>
             {/each}
           </tbody>
@@ -882,14 +622,10 @@
                 <td><strong>{formatPrice(recon.discount.subtotalBeforeDiscount)}</strong></td>
                 <td></td>
                 <td></td>
-                <td></td>
               </tr>
               <tr class="discount-row">
-                <td>
-                  <em>{recon.discount.discountPercentage}% discount</em>
-                </td>
+                <td><em>{recon.discount.discountPercentage}% discount</em></td>
                 <td>−{formatPrice(recon.discount.discountAmount)}</td>
-                <td></td>
                 <td></td>
                 <td></td>
               </tr>
@@ -900,18 +636,16 @@
                 <td><small>{formatPrice(recon.discount.adminFeeAmount)}</small></td>
                 <td></td>
                 <td></td>
-                <td></td>
               </tr>
               <tr class="discount-row discount-row--indent">
                 <td>
-                  <small
-                    >{recon.discount.memberDiscountPercentage.toFixed(
+                  <small>
+                    {recon.discount.memberDiscountPercentage.toFixed(
                       recon.discount.memberDiscountPercentage % 1 === 0 ? 0 : 1,
-                    )}% to members</small
-                  >
+                    )}% to members
+                  </small>
                 </td>
                 <td><small>−{formatPrice(recon.discount.memberDiscountAmount)}</small></td>
-                <td></td>
                 <td></td>
                 <td></td>
               </tr>
@@ -920,7 +654,6 @@
                 <td><strong>{formatPrice(recon.orderTotals.net)}</strong></td>
                 <td><strong>{formatPrice(recon.orderTotals.vat)}</strong></td>
                 <td><strong>{formatPrice(recon.orderTotals.gross)}</strong></td>
-                <td></td>
               </tr>
             {:else}
               <tr>
@@ -928,7 +661,6 @@
                 <td><strong>{formatPrice(recon.orderTotals.net)}</strong></td>
                 <td><strong>{formatPrice(recon.orderTotals.vat)}</strong></td>
                 <td><strong>{formatPrice(recon.orderTotals.gross)}</strong></td>
-                <td></td>
               </tr>
             {/if}
             {#if parsedInvoice}
@@ -937,30 +669,34 @@
                 <td>{formatPrice(parsedInvoice.totals.nettGoodsValue)}</td>
                 <td>{formatPrice(parsedInvoice.totals.vat)}</td>
                 <td>{formatPrice(parsedInvoice.totals.totalPayable)}</td>
-                <td></td>
               </tr>
             {/if}
           </tfoot>
         </table>
       </figure>
-    </section>
 
-    {#if isOrganiser && !isReadOnly && recon.allConfirmed}
-      <section>
-        <ConfirmButton
-          label="Mark order complete"
-          onclick={handleMarkComplete}
-          disabled={completing}
-        />
-      </section>
-    {/if}
-  {/if}
+      <p>
+        <small>
+          Once members have paid, head to the <a href="/orders/{data.orderId}/delivery">delivery</a>
+          phase to tick items off as they're collected.
+        </small>
+      </p>
+    </section>
   {/if}
 {/if}
 
 <style>
   .action-bar {
     margin-bottom: 1rem;
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .action-bar button {
+    width: auto;
+    margin: 0;
   }
 
   .table-input {
@@ -973,16 +709,6 @@
 
   .table-input--narrow {
     width: 6rem;
-  }
-
-  .confirm-btn {
-    padding: 0.2em 0.6em;
-    font-size: 0.85em;
-  }
-
-  .confirm-all-btn {
-    width: auto;
-    margin: 1rem var(--pico-spacing, 1rem);
   }
 
   .invoice-upload {
@@ -1047,36 +773,5 @@
 
   .discount-row--indent td:first-child {
     padding-left: 2rem;
-  }
-
-  .summary-group {
-    --bar-colour: var(--text-muted);
-  }
-  .summary-group.status-ready {
-    --bar-colour: var(--rounding-ready);
-  }
-  .summary-group.status-nearly {
-    --bar-colour: var(--rounding-nearly);
-  }
-  .summary-group.status-needs_more {
-    --bar-colour: var(--rounding-needs-more);
-  }
-  .summary-group.status-over {
-    --bar-colour: var(--rounding-over);
-  }
-
-  .summary-group .group-header th {
-    color: var(--bar-colour);
-    border-bottom: 2px solid var(--bar-colour);
-    padding-top: var(--space-3);
-  }
-
-  .summary-group .summary-row td:first-child {
-    border-left: 3px solid var(--bar-colour);
-  }
-
-  .summary-group .group-subtotal td {
-    border-top: 1px solid var(--bar-colour);
-    color: var(--bar-colour);
   }
 </style>

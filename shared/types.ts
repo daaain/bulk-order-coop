@@ -107,6 +107,7 @@ export interface Allocation {
   amount: number;
   price: number;
   confirmed: boolean;
+  splitConfirmed: boolean;
 }
 
 export interface OrderMember {
@@ -182,9 +183,11 @@ export interface MemberCostSummary {
     vat: number;
     gross: number;
     confirmed: boolean;
+    splitConfirmed: boolean;
   }[];
   totals: { net: number; vat: number; gross: number };
   allConfirmed: boolean;
+  allSplit: boolean;
 }
 
 export interface ReconciliationSummary {

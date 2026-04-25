@@ -389,6 +389,62 @@ describe('Item routes', () => {
       expect(body.claims).toHaveLength(1);
     });
 
+    it('rejects swap once any delivery row exists for the order', async () => {
+      const { member, orderId } = await seedOrder();
+      const { id: itemId } = await seedOrderItem(orderId, member.id, 'alice@test.local', '1001');
+      // A second item that we'll set delivery on, simulating "invoice processed".
+      const { id: otherItemId } = await seedOrderItem(
+        orderId,
+        member.id,
+        'alice@test.local',
+        '1002',
+      );
+
+      await authFetch(`/orders/${orderId}/items/${itemId}/claims`, member.id, 'alice@test.local', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: 500 }),
+      });
+
+      await authFetch(`/orders/${orderId}`, member.id, 'alice@test.local', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'closed' }),
+      });
+      await authFetch(`/orders/${orderId}`, member.id, 'alice@test.local', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'reconciling' }),
+      });
+
+      // Record a delivery on a different item — proves the gate is order-wide.
+      await authFetch(
+        `/orders/${orderId}/items/${otherItemId}/delivery`,
+        member.id,
+        'alice@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'arrived' }),
+        },
+      );
+
+      const res = await authFetch(
+        `/orders/${orderId}/items/${itemId}/swap`,
+        member.id,
+        'alice@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(TEST_ITEMS['1003']),
+        },
+      );
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/invoice has been processed/i);
+    });
+
     it('rejects swap from a non-member with 403', async () => {
       const { member, orderId } = await seedOrder();
       const intruder = await seedMember('eve@test.local', 'Eve', 'EV');

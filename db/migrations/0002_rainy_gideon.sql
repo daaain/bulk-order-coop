@@ -1,0 +1,1 @@
+ALTER TABLE `allocations` ADD `split_confirmed` integer DEFAULT 0 NOT NULL;

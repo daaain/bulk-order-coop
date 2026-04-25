@@ -35,3 +35,14 @@ export function confirmAllocation(orderId: string, allocationId: string): Promis
 export function confirmAllMyAllocations(orderId: string): Promise<{ count: number }> {
   return apiFetch(`/orders/${orderId}/confirm-all`, { method: 'PUT', body: JSON.stringify({}) });
 }
+
+export function updateAllocationChecks(
+  orderId: string,
+  allocationId: string,
+  checks: { split?: boolean; pickedUp?: boolean },
+): Promise<Allocation> {
+  return apiFetch(`/orders/${orderId}/allocations/${allocationId}/checks`, {
+    method: 'PUT',
+    body: JSON.stringify(checks),
+  });
+}

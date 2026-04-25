@@ -19,7 +19,9 @@
     { href: `/orders/${data.orderId}`, label: 'Dashboard', exact: true },
     { href: `/orders/${data.orderId}/catalogue`, label: 'Catalogue' },
     { href: `/orders/${data.orderId}/claims`, label: 'Claims' },
-    { href: `/orders/${data.orderId}/reconciliation`, label: 'Reconciliation' },
+    { href: `/orders/${data.orderId}/submission`, label: 'Submission' },
+    { href: `/orders/${data.orderId}/invoice`, label: 'Invoice' },
+    { href: `/orders/${data.orderId}/delivery`, label: 'Delivery' },
   ]);
 
   function isActive(tab: { href: string; exact?: boolean }, pathname: string): boolean {

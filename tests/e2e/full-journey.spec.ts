@@ -46,39 +46,39 @@ test.describe('Full order journey', () => {
     await page.click('button:has-text("Yes")');
     await expect(page.getByText('reconciling').first()).toBeVisible({ timeout: 15000 });
 
-    // 6. Navigate to reconciliation page
-    await page.click('a:has-text("Reconciliation")');
-    await page.waitForURL(/\/reconciliation/);
+    // 6. Navigate to invoice phase
+    await page.click('a:has-text("Invoice")');
+    await page.waitForURL(/\/invoice/);
 
-    // 7. Mark items as arrived — wait for the page to load first
+    // 7. Mark items as arrived (no PDF invoice in this test)
     const markAllBtn = page.locator('button:has-text("Mark all as arrived")');
     await expect(markAllBtn).toBeVisible({ timeout: 15000 });
     await markAllBtn.click();
 
-    // 8. Generate allocations. The "Generate allocations" button is gated by
-    // `allDeliverySet`, so it only appears once markAllArrived() has finished
-    // PATCHing every item and reloaded the reconciliation. Waiting for the
-    // button to be visible is a deterministic signal — no networkidle needed.
+    // 8. Generate allocations. The button is gated by `allDeliverySet`, so it
+    //    only appears once markAllArrived() has finished PATCHing every item
+    //    and reloaded the reconciliation.
     const allocateBtn = page.locator('button:has-text("Generate allocations")');
     await expect(allocateBtn).toBeVisible({ timeout: 30000 });
     await allocateBtn.click();
 
-    // Wait for allocations to appear (can be slow under CI)
+    // 9. Move to delivery phase
+    await page.click('a:has-text("Delivery")');
+    await page.waitForURL(/\/delivery/);
     await expect(page.locator('details').first()).toBeVisible({ timeout: 30000 });
 
-    // 9. Confirm all allocations
-    const confirmAllBtn = page.locator('button:has-text("Confirm all my allocations")');
+    // 10. Confirm pickup of all my items
+    const confirmAllBtn = page.locator('button:has-text("I\'ve collected everything")');
     await expect(confirmAllBtn).toBeVisible({ timeout: 15000 });
     await confirmAllBtn.click();
+    await expect(page.locator('mark.badge-open:has-text("Collected")').first()).toBeVisible({
+      timeout: 15000,
+    });
 
-    // Verify confirmed
-    await expect(page.getByText('Confirmed').first()).toBeVisible({ timeout: 15000 });
-
-    // 10. Mark order complete (back to dashboard)
-    await page.click('a:has-text("Dashboard")');
-    await page.waitForURL(/\/orders\/[a-zA-Z0-9_-]+$/);
-
-    await page.click('button:has-text("Mark complete")');
+    // 11. Mark order complete from the delivery page (gated on allConfirmed)
+    const markCompleteBtn = page.locator('button:has-text("Mark order complete")');
+    await expect(markCompleteBtn).toBeVisible({ timeout: 15000 });
+    await markCompleteBtn.click();
     await page.click('button:has-text("Yes")');
     await expect(page.getByText('complete').first()).toBeVisible({ timeout: 15000 });
   });

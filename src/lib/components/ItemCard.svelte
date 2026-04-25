@@ -3,9 +3,11 @@
   import {
     formatPrice,
     formatCaseSize,
+    formatClaimAmount as formatClaimAmountShared,
     calculateCasePriceGross,
     calculateUnitPriceGross,
     getCaseIncrement,
+    isPackaged as isPackagedShared,
   } from '$lib/format';
   import RoundingBar from './RoundingBar.svelte';
   import ClaimForm from './ClaimForm.svelte';
@@ -61,7 +63,7 @@
   let myClaim = $derived(orderItem?.claims.find((c) => c.memberId === currentMemberId));
 
   let isOnOrder = $derived(!!orderItem);
-  let isPackaged = $derived(item.unitsPerCase != null && item.unitsPerCase > 0);
+  let isPackaged = $derived(isPackagedShared(item.unitsPerCase));
   let caseIncrement = $derived(getCaseIncrement(item.unitsPerCase, item.packSize));
 
   let unitPrice = $derived(
@@ -83,11 +85,7 @@
   }
 
   function formatClaimAmount(amount: number): string {
-    if (isPackaged) {
-      const packs = toPacks(amount);
-      return `${packs} pack${packs !== 1 ? 's' : ''}`;
-    }
-    return `${amount}${item.unit}`;
+    return formatClaimAmountShared(amount, item.unitsPerCase, item.packSize, item.unit);
   }
 
   function handleAddToOrder() {

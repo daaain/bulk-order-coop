@@ -475,4 +475,166 @@ describe('Reconciliation API', () => {
       expect(reconBody.allConfirmed).toBe(true);
     });
   });
+
+  describe('PUT /orders/:id/allocations/:allocationId/checks', () => {
+    /** Set up a reconciling order with allocations, return relevant IDs. */
+    async function setupWithAllocations(opts?: { secondMember?: boolean }) {
+      const ctx = await setupReconcilingOrder(opts);
+      await authFetch(
+        `/orders/${ctx.orderId}/items/${ctx.itemId}/delivery`,
+        ctx.organiser.id,
+        'organiser@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'arrived' }),
+        },
+      );
+      await authFetch(`/orders/${ctx.orderId}/allocate`, ctx.organiser.id, 'organiser@test.local', {
+        method: 'POST',
+      });
+
+      const reconRes = await authFetch(
+        `/orders/${ctx.orderId}/reconciliation`,
+        ctx.organiser.id,
+        'organiser@test.local',
+      );
+      const reconBody = (await reconRes.json()) as {
+        items: Array<{
+          allocations: Array<{
+            id: string;
+            memberId: string;
+            confirmed: boolean;
+            splitConfirmed: boolean;
+          }>;
+        }>;
+      };
+      return { ...ctx, allocations: reconBody.items[0].allocations };
+    }
+
+    it('toggles split flag, callable by any order member', async () => {
+      const { member, orderId, allocations: allocs } = await setupWithAllocations({
+        secondMember: true,
+      });
+      // The organiser owns the allocation; the other member toggles split.
+      const ownerAlloc = allocs.find((a) => a.memberId !== member!.id)!;
+
+      const onRes = await authFetch(
+        `/orders/${orderId}/allocations/${ownerAlloc.id}/checks`,
+        member!.id,
+        'member@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ split: true }),
+        },
+      );
+      expect(onRes.status).toBe(200);
+      const onBody = (await onRes.json()) as { splitConfirmed: boolean; confirmed: boolean };
+      expect(onBody.splitConfirmed).toBe(true);
+      expect(onBody.confirmed).toBe(false);
+
+      const offRes = await authFetch(
+        `/orders/${orderId}/allocations/${ownerAlloc.id}/checks`,
+        member!.id,
+        'member@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ split: false }),
+        },
+      );
+      expect(offRes.status).toBe(200);
+      const offBody = (await offRes.json()) as { splitConfirmed: boolean };
+      expect(offBody.splitConfirmed).toBe(false);
+    });
+
+    it('toggles pickedUp by the allocation owner', async () => {
+      const { organiser, orderId, allocations: allocs } = await setupWithAllocations();
+      const own = allocs[0];
+
+      const res = await authFetch(
+        `/orders/${orderId}/allocations/${own.id}/checks`,
+        organiser.id,
+        'organiser@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pickedUp: true }),
+        },
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { confirmed: boolean };
+      expect(body.confirmed).toBe(true);
+    });
+
+    it('updates both split and pickedUp in one request', async () => {
+      const { organiser, orderId, allocations: allocs } = await setupWithAllocations();
+      const own = allocs[0];
+
+      const res = await authFetch(
+        `/orders/${orderId}/allocations/${own.id}/checks`,
+        organiser.id,
+        'organiser@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ split: true, pickedUp: true }),
+        },
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { splitConfirmed: boolean; confirmed: boolean };
+      expect(body.splitConfirmed).toBe(true);
+      expect(body.confirmed).toBe(true);
+    });
+
+    it('rejects an empty body with 400', async () => {
+      const { organiser, orderId, allocations: allocs } = await setupWithAllocations();
+
+      const res = await authFetch(
+        `/orders/${orderId}/allocations/${allocs[0].id}/checks`,
+        organiser.id,
+        'organiser@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects non-boolean values with 400', async () => {
+      const { organiser, orderId, allocations: allocs } = await setupWithAllocations();
+
+      const res = await authFetch(
+        `/orders/${orderId}/allocations/${allocs[0].id}/checks`,
+        organiser.id,
+        'organiser@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ split: 'yes' }),
+        },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects non-members with 403', async () => {
+      const { orderId, allocations: allocs } = await setupWithAllocations();
+      const intruder = await seedMember('eve@test.local', 'Eve', 'EV');
+
+      const res = await authFetch(
+        `/orders/${orderId}/allocations/${allocs[0].id}/checks`,
+        intruder.id,
+        'eve@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ split: true }),
+        },
+      );
+      expect(res.status).toBe(403);
+    });
+  });
 });

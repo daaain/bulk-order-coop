@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { calculateCasePriceGross, calculateUnitPriceGross, getCaseIncrement } from '../src/lib/format';
+import {
+  calculateCasePriceGross,
+  calculateUnitPriceGross,
+  formatClaimAmount,
+  formatClaimDelta,
+  getCaseIncrement,
+} from '../src/lib/format';
 
 describe('calculateCasePriceGross', () => {
   it('returns case price with VAT included', () => {
@@ -85,6 +91,57 @@ describe('calculateUnitPriceGross', () => {
     const result = calculateUnitPriceGross(10, 0, null, 0, 'g');
     expect(result.price).toBe(0);
     expect(result.perUnit).toBe('kg');
+  });
+});
+
+describe('formatClaimAmount', () => {
+  it('formats a single pack for packaged items', () => {
+    // 6×500g, claim 500g → 1 pack
+    expect(formatClaimAmount(500, 6, 500, 'g')).toBe('1 pack');
+  });
+
+  it('pluralises packs above one', () => {
+    // 6×500g, claim 1500g → 3 packs
+    expect(formatClaimAmount(1500, 6, 500, 'g')).toBe('3 packs');
+  });
+
+  it('pluralises zero packs', () => {
+    expect(formatClaimAmount(0, 6, 500, 'g')).toBe('0 packs');
+  });
+
+  it('rounds non-integer pack counts (partial allocation)', () => {
+    // Partial-delivery scaling can produce 0.7 of a pack — round for display
+    expect(formatClaimAmount(350, 6, 500, 'g')).toBe('1 pack');
+  });
+
+  it('formats loose g items with their natural unit', () => {
+    expect(formatClaimAmount(500, null, 500, 'g')).toBe('500g');
+  });
+
+  it('formats loose kg items with their natural unit', () => {
+    expect(formatClaimAmount(2.5, null, 25, 'kg')).toBe('2.5kg');
+  });
+
+  it('formats loose ml items with their natural unit', () => {
+    expect(formatClaimAmount(750, null, 750, 'ml')).toBe('750ml');
+  });
+});
+
+describe('formatClaimDelta', () => {
+  it('formats a positive packaged delta with pack(s)', () => {
+    expect(formatClaimDelta(500, 6, 500, 'g')).toBe('+1 pack');
+  });
+
+  it('formats a negative packaged delta with pack(s)', () => {
+    expect(formatClaimDelta(-1000, 6, 500, 'g')).toBe('-2 packs');
+  });
+
+  it('formats a positive loose delta with unit', () => {
+    expect(formatClaimDelta(0.5, null, 25, 'kg')).toBe('+0.5kg');
+  });
+
+  it('formats a negative loose delta with unit', () => {
+    expect(formatClaimDelta(-100, null, 500, 'g')).toBe('-100g');
   });
 });
 

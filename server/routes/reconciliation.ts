@@ -212,6 +212,7 @@ app.get('/:id/reconciliation', async (c) => {
       amount: allocations.amount,
       price: allocations.price,
       confirmed: allocations.confirmed,
+      splitConfirmed: allocations.splitConfirmed,
       memberName: members.name,
       memberInitials: members.initials,
     })
@@ -222,7 +223,11 @@ app.get('/:id/reconciliation', async (c) => {
   const allocationsByItem = new Map<string, AllocationWithMember[]>();
   for (const row of allocationRows) {
     const list = allocationsByItem.get(row.orderItemId) ?? [];
-    list.push({ ...row, confirmed: Boolean(row.confirmed) });
+    list.push({
+      ...row,
+      confirmed: Boolean(row.confirmed),
+      splitConfirmed: Boolean(row.splitConfirmed),
+    });
     allocationsByItem.set(row.orderItemId, list);
   }
 
@@ -287,6 +292,7 @@ app.get('/:id/reconciliation', async (c) => {
           items: [],
           totals: { net: 0, vat: 0, gross: 0 },
           allConfirmed: true,
+          allSplit: true,
         };
         memberTotals.set(alloc.memberId, summary);
       }
@@ -316,6 +322,7 @@ app.get('/:id/reconciliation', async (c) => {
         vat,
         gross,
         confirmed: alloc.confirmed,
+        splitConfirmed: alloc.splitConfirmed,
       });
 
       summary.totals.net += net;
@@ -324,6 +331,9 @@ app.get('/:id/reconciliation', async (c) => {
 
       if (!alloc.confirmed) {
         summary.allConfirmed = false;
+      }
+      if (!alloc.splitConfirmed) {
+        summary.allSplit = false;
       }
     }
   }
@@ -510,6 +520,87 @@ app.post('/:id/allocate', async (c) => {
   }
 
   return c.json({ count: allNewAllocations.length });
+});
+
+// PUT /:id/allocations/:allocationId/checks — Toggle split / picked-up flags
+//
+// Body: { split?: boolean, pickedUp?: boolean } — at least one field required.
+// Permissions:
+//   - split: any member of the order (anyone helping at the distribution)
+//   - pickedUp: any member of the order (members often collect each other's order)
+app.put('/:id/allocations/:allocationId/checks', async (c) => {
+  const db = drizzle(c.env.DB);
+  const orderId = c.req.param('id');
+  const allocationId = c.req.param('allocationId');
+  const memberId = c.get('memberId');
+  const body = (await c.req.json()) as { split?: unknown; pickedUp?: unknown };
+
+  const splitProvided = Object.prototype.hasOwnProperty.call(body, 'split');
+  const pickedUpProvided = Object.prototype.hasOwnProperty.call(body, 'pickedUp');
+
+  if (!splitProvided && !pickedUpProvided) {
+    return c.json({ error: 'At least one of split or pickedUp must be provided' }, 400);
+  }
+  if (splitProvided && typeof body.split !== 'boolean') {
+    return c.json({ error: 'split must be a boolean' }, 400);
+  }
+  if (pickedUpProvided && typeof body.pickedUp !== 'boolean') {
+    return c.json({ error: 'pickedUp must be a boolean' }, 400);
+  }
+
+  const [membership] = await db
+    .select()
+    .from(orderMembers)
+    .where(and(eq(orderMembers.orderId, orderId), eq(orderMembers.memberId, memberId)));
+
+  if (!membership) {
+    return c.json({ error: 'You are not a member of this order' }, 403);
+  }
+
+  const [order] = await db
+    .select({ status: orders.status })
+    .from(orders)
+    .where(eq(orders.id, orderId));
+
+  if (!order) {
+    return c.json({ error: 'Order not found' }, 404);
+  }
+
+  if (order.status !== 'reconciling') {
+    return c.json({ error: 'Order must be in reconciling status' }, 400);
+  }
+
+  const [alloc] = await db
+    .select()
+    .from(allocations)
+    .where(eq(allocations.id, allocationId));
+
+  if (!alloc) {
+    return c.json({ error: 'Allocation not found' }, 404);
+  }
+
+  const [item] = await db
+    .select()
+    .from(orderItems)
+    .where(and(eq(orderItems.id, alloc.orderItemId), eq(orderItems.orderId, orderId)));
+
+  if (!item) {
+    return c.json({ error: 'Allocation does not belong to this order' }, 404);
+  }
+
+  const updates: { confirmed?: number; splitConfirmed?: number } = {};
+  if (splitProvided) updates.splitConfirmed = body.split ? 1 : 0;
+  if (pickedUpProvided) updates.confirmed = body.pickedUp ? 1 : 0;
+
+  await db.update(allocations).set(updates).where(eq(allocations.id, allocationId));
+
+  const [updated] = await db.select().from(allocations).where(eq(allocations.id, allocationId));
+
+  return c.json({
+    ...updated,
+    confirmed: Boolean(updated.confirmed),
+    splitConfirmed: Boolean(updated.splitConfirmed),
+  });
 });
 
 // PUT /:id/allocations/:allocationId/confirm — Confirm own allocation

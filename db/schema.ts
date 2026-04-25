@@ -140,6 +140,7 @@ export const allocations = sqliteTable(
     amount: real('amount').notNull(),
     price: real('price').notNull(),
     confirmed: integer('confirmed').notNull().default(0),
+    splitConfirmed: integer('split_confirmed').notNull().default(0),
   },
   (table) => [unique().on(table.orderItemId, table.memberId)],
 );

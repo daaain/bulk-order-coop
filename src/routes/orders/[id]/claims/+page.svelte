@@ -7,7 +7,7 @@
     removeClaim,
     removeItemFromOrder,
   } from '$lib/claims';
-  import { formatPrice, getCaseIncrement } from '$lib/format';
+  import { formatClaimAmount, formatPrice, getCaseIncrement, isPackaged } from '$lib/format';
   import { loadCatalogue } from '$lib/catalogue';
   import ClaimForm from '$lib/components/ClaimForm.svelte';
   import ItemCard from '$lib/components/ItemCard.svelte';
@@ -81,29 +81,12 @@
     });
   });
 
-  function isPackaged(unitsPerCase: number | null): boolean {
-    return unitsPerCase != null && unitsPerCase > 0;
-  }
-
   function toPacks(amount: number, packSize: number): number {
     return packSize > 0 ? Math.round(amount / packSize) : amount;
   }
 
   function toNatural(packs: number, packSize: number): number {
     return packs * packSize;
-  }
-
-  function formatClaimAmount(
-    amount: number,
-    unitsPerCase: number | null,
-    packSize: number,
-    unit: string,
-  ): string {
-    if (isPackaged(unitsPerCase)) {
-      const packs = toPacks(amount, packSize);
-      return `${packs} pack${packs !== 1 ? 's' : ''}`;
-    }
-    return `${amount}${unit}`;
   }
 
   async function loadData() {
