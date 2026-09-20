@@ -43,7 +43,7 @@ The order totals page shows exactly what each member owes, broken down by net, V
 
 ## Self-hosting
 
-The app runs on Cloudflare Pages + Workers + D1 (SQLite) + KV. You'll need:
+The app runs on Cloudflare Workers (static assets + API) + D1 (SQLite) + KV. You'll need:
 
 - A [Cloudflare](https://cloudflare.com) account (free tier works)
 - A [Resend](https://resend.com) account for sending magic link emails, with custom domain set up
@@ -58,10 +58,9 @@ bun run build
 
 ### 2. Create Cloudflare resources
 
-```bash
-# Create the Pages project
-bunx wrangler pages project create bulk-order-coop --production-branch main
+The Worker itself is created on first deploy; only the storage resources need creating up front.
 
+```bash
 # Create the D1 database
 bunx wrangler d1 create bulk-order-coop-db
 
@@ -79,7 +78,7 @@ bunx wrangler d1 migrations apply DB --remote
 
 ### 4. Set secrets
 
-In the Cloudflare dashboard (Workers & Pages → bulk-order-coop → Settings → Variables and Secrets), add:
+Either via Wrangler (`bunx wrangler secret put RESEND_API_KEY`, etc.) or in the Cloudflare dashboard (Workers & Pages → bulk-order-coop → Settings → Variables and Secrets), add:
 
 | Secret           | Description                                                           |
 | ---------------- | --------------------------------------------------------------------- |
@@ -90,8 +89,12 @@ In the Cloudflare dashboard (Workers & Pages → bulk-order-coop → Settings �
 ### 5. Deploy
 
 ```bash
-bunx wrangler pages deploy build/
+bunx wrangler deploy
 ```
+
+This uploads the SPA build as static assets and the Hono API as the Worker script. Workers Logs is enabled in `wrangler.toml`, so request logs and errors are retained in the dashboard (Workers & Pages → bulk-order-coop → Logs).
+
+To serve the app on a custom domain, add it under Settings → Domains & Routes. The domain's DNS zone must be on Cloudflare.
 
 Or set up CI — see [DEVELOPMENT.md](DEVELOPMENT.md) for the GitHub Actions workflow and required secrets.
 

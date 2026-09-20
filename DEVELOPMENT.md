@@ -12,11 +12,11 @@
 | Layer    | Technology                                                            |
 | -------- | --------------------------------------------------------------------- |
 | Frontend | SvelteKit (static SPA via `adapter-static`), Svelte 5 runes, Pico CSS |
-| API      | Hono on Cloudflare Workers (via Pages Functions)                      |
+| API      | Hono on Cloudflare Workers                                            |
 | Database | Cloudflare D1 (SQLite) with Drizzle ORM                               |
 | Auth     | Magic links via Resend, JWT (HS256, Web Crypto API)                   |
 | Build    | Vite, Bun                                                             |
-| CI/CD    | GitHub Actions → Cloudflare Pages                                     |
+| CI/CD    | GitHub Actions → Cloudflare Workers                                   |
 
 ## Project structure
 
@@ -24,9 +24,8 @@
 ├── db/
 │   ├── schema.ts              # Drizzle ORM schema (10 tables)
 │   └── migrations/            # Generated D1 migrations
-├── functions/
-│   └── api/[[route]].ts       # Cloudflare Pages catch-all → Hono
 ├── server/
+│   ├── worker.ts              # Cloudflare Workers entry point → Hono
 │   ├── routes/                # Hono route handlers
 │   │   ├── auth.ts
 │   │   ├── catalogues.ts
@@ -77,7 +76,7 @@ bun run db:migrate
 bun run dev
 ```
 
-Vite proxies `/api` requests to the Wrangler dev server on port 8787.
+Vite proxies `/api` requests to the Wrangler dev server on port 8787. Wrangler needs the `build/` directory to exist (it's the static assets directory in `wrangler.toml`), so run `bun run build` once before the first `bun run dev` on a fresh clone.
 
 For magic links to work locally, you'll need to set `RESEND_API_KEY` and `JWT_SECRET` in a `.dev.vars` file (Wrangler's local secrets):
 
@@ -144,29 +143,34 @@ bunx wrangler d1 migrations apply DB --remote
 
 ## Deployment
 
-The app deploys to Cloudflare Pages via GitHub Actions. The workflow (`.github/workflows/deploy.yml`) has two jobs:
+The app deploys to Cloudflare Workers via GitHub Actions. The workflow (`.github/workflows/deploy.yml`) has two jobs:
 
 1. **CI** (runs on every push and PR): lint, test, build
-2. **Deploy** (runs on push to `main` only, after CI passes): deploys to Cloudflare Pages
+2. **Deploy** (runs on push to `main` only, after CI passes): deploys to Cloudflare Workers with `wrangler deploy`
 
 ### Required GitHub secrets
 
 | Secret                  | Description                                      |
 | ----------------------- | ------------------------------------------------ |
-| `CLOUDFLARE_API_TOKEN`  | Cloudflare API token with Pages + D1 permissions |
+| `CLOUDFLARE_API_TOKEN`  | Cloudflare API token with Workers Scripts edit permission |
 | `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID                       |
 
 ### Required Cloudflare secrets
 
-Set these in the Cloudflare dashboard (Workers & Pages → your project → Settings → Environment variables):
+Set these with `bunx wrangler secret put <NAME>` or in the Cloudflare dashboard (Workers & Pages → your Worker → Settings → Variables and Secrets):
 
 | Secret           | Description                                  |
 | ---------------- | -------------------------------------------- |
 | `RESEND_API_KEY` | Resend API key for sending magic link emails |
+| `EMAIL_FROM`     | Sender, e.g. "Bulk Order Co-op <noreply@…>"  |
 | `JWT_SECRET`     | Secret key for signing JWTs                  |
+
+### Logs
+
+Workers Logs is enabled (`[observability]` in `wrangler.toml`), so `console.log`/`console.error` output from the API is retained and searchable in the dashboard under the Worker's **Logs** tab. For a live stream, use `bunx wrangler tail`.
 
 ### First deployment
 
-See the [Self-hosting section in README.md](README.md#self-hosting) for full setup instructions (creating the Pages project, D1 database, R2 bucket, and secrets).
+See the [Self-hosting section in README.md](README.md#self-hosting) for full setup instructions (creating the D1 database, KV namespace, and secrets).
 
 D1 migrations are applied manually — they're too risky to automate in CI.
