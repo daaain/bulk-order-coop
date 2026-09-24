@@ -5,12 +5,8 @@
   import { useAuth } from '$lib/auth.svelte';
   import { formatClaimAmount, formatPrice } from '$lib/format';
   import { fetchReconciliation } from '$lib/reconciliation';
-  import { formatInfinityOrderCsv } from '$shared/infinity-order';
-  import type {
-    ReconciliationSummary,
-    ReconciliationItem,
-    RoundingStatus,
-  } from '$shared/types';
+  import { formatInfinityOrderCsv, selectInfinityOrderLines } from '$shared/infinity-order';
+  import type { ReconciliationSummary, ReconciliationItem, RoundingStatus } from '$shared/types';
 
   let { data }: { data: LayoutData } = $props();
 
@@ -20,6 +16,38 @@
   let loading = $state(true);
   let error = $state('');
   let infinityCopied = $state(false);
+
+  // "Needs more takers" items the organiser has ticked for export because the
+  // shortfall was agreed on the group chat but not yet claimed. Remembered per
+  // order in this browser so a reload doesn't lose the selection.
+  const includedStorageKey = $derived(`submission-include-needs-more:${data.orderId}`);
+  let includedNeedsMore = $state<Set<string>>(new Set());
+
+  function loadIncluded(key: string): Set<string> {
+    try {
+      const raw = localStorage.getItem(key);
+      return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  function toggleIncluded(itemId: string, checked: boolean) {
+    const next = new Set(includedNeedsMore);
+    if (checked) next.add(itemId);
+    else next.delete(itemId);
+    includedNeedsMore = next;
+    try {
+      localStorage.setItem(includedStorageKey, JSON.stringify([...next]));
+    } catch {
+      // Storage unavailable (private mode etc.) — selection just won't persist
+    }
+  }
+
+  $effect(() => {
+    const key = includedStorageKey;
+    includedNeedsMore = untrack(() => loadIncluded(key));
+  });
 
   const isOrganiser = $derived(
     data.order.members.some((m) => m.memberId === auth.user?.id && m.role === 'organiser'),
@@ -74,15 +102,13 @@
 
   const summaryTotal = $derived(summaryItems.reduce((sum, i) => sum + itemGross(i), 0));
 
+  const exportLines = $derived(
+    recon ? selectInfinityOrderLines(recon.items, includedNeedsMore) : [],
+  );
+
   async function copyInfinityOrder() {
     if (!recon) return;
-    const lines = recon.items
-      .filter((i) => i.rounding.status === 'ready')
-      .map((i) => ({
-        productCode: i.orderItem.productCode,
-        cases: i.rounding.casesNeeded,
-      }));
-    const csv = formatInfinityOrderCsv(lines);
+    const csv = formatInfinityOrderCsv(exportLines);
     try {
       await navigator.clipboard.writeText(csv);
       infinityCopied = true;
@@ -120,7 +146,10 @@
 </svelte:head>
 
 <h1 class="animate-in">Submission</h1>
-<p>The full order to place with Infinity. Only complete-case items are copied.</p>
+<p>
+  The full order to place with Infinity. Complete-case items are always copied; tick any
+  <em>Needs more takers</em> items that have been agreed on the group chat to include them too.
+</p>
 
 {#if loading}
   <p aria-busy="true">Loading order data...</p>
@@ -134,7 +163,9 @@
   <section>
     <div class="action-bar">
       <button onclick={copyInfinityOrder} data-testid="copy-infinity">
-        {infinityCopied ? 'Copied!' : 'Copy for Infinity'}
+        {infinityCopied
+          ? 'Copied!'
+          : `Copy for Infinity (${exportLines.length} ${exportLines.length === 1 ? 'line' : 'lines'})`}
       </button>
     </div>
 
@@ -163,7 +194,21 @@
               </tr>
               {#each group.items as i (i.orderItem.id)}
                 <tr class="summary-row">
-                  <td>{i.catalogueItem.description}</td>
+                  <td>
+                    {#if group.status === 'needs_more'}
+                      <label class="include-toggle">
+                        <input
+                          type="checkbox"
+                          checked={includedNeedsMore.has(i.orderItem.id)}
+                          onchange={(e) => toggleIncluded(i.orderItem.id, e.currentTarget.checked)}
+                          data-testid="include-needs-more"
+                        />
+                        {i.catalogueItem.description}
+                      </label>
+                    {:else}
+                      {i.catalogueItem.description}
+                    {/if}
+                  </td>
                   <td>{i.rounding.casesNeeded}</td>
                   <td>
                     {formatClaimAmount(
@@ -224,6 +269,18 @@
 <style>
   .action-bar {
     margin-bottom: 1rem;
+  }
+
+  .include-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    margin: 0;
+  }
+
+  .include-toggle input {
+    margin: 0;
+    flex-shrink: 0;
   }
 
   .swap-btn {

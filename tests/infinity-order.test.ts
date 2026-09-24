@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   formatInfinityOrderCsv,
   parseInfinityOrderCsv,
+  selectInfinityOrderLines,
   splitAmountRandomly,
 } from '../shared/infinity-order';
 
@@ -103,5 +104,31 @@ describe('splitAmountRandomly', () => {
       const sum = parts.reduce((a, b) => a + b, 0);
       expect(sum).toBeCloseTo(total, 6);
     }
+  });
+});
+
+describe('selectInfinityOrderLines', () => {
+  const item = (
+    id: string,
+    status: 'ready' | 'nearly' | 'needs_more' | 'over',
+    casesNeeded = 1,
+  ) => ({ orderItem: { id, productCode: `P${id}` }, rounding: { status, casesNeeded } });
+
+  test('includes only ready items by default', () => {
+    const items = [item('1', 'ready', 2), item('2', 'needs_more'), item('3', 'nearly')];
+    expect(selectInfinityOrderLines(items)).toEqual([{ productCode: 'P1', cases: 2 }]);
+  });
+
+  test('includes ticked needs-more-takers items, rounded up to whole cases', () => {
+    const items = [item('1', 'ready'), item('2', 'needs_more', 3), item('3', 'needs_more')];
+    expect(selectInfinityOrderLines(items, new Set(['2']))).toEqual([
+      { productCode: 'P1', cases: 1 },
+      { productCode: 'P2', cases: 3 },
+    ]);
+  });
+
+  test('ignores ticks on items with nothing claimed or in other statuses', () => {
+    const items = [item('1', 'needs_more', 0), item('2', 'nearly')];
+    expect(selectInfinityOrderLines(items, new Set(['1', '2']))).toEqual([]);
   });
 });
