@@ -5,6 +5,8 @@
   import { useAuth } from '$lib/auth.svelte';
   import { formatClaimAmount, formatPrice } from '$lib/format';
   import { fetchReconciliation } from '$lib/reconciliation';
+  import { removeItemFromOrder } from '$lib/claims';
+  import ConfirmButton from '$lib/components/ConfirmButton.svelte';
   import { decodeCsvBytes } from '$shared/csv';
   import { formatInfinityOrderCsv, selectInfinityOrderLines } from '$shared/infinity-order';
   import {
@@ -178,9 +180,34 @@
   const outstandingCount = $derived(
     comparison ? comparison.missing.filter((m) => m.stillOnOrder).length : 0,
   );
-  const swappedCount = $derived(
-    comparison ? comparison.missing.filter((m) => !m.stillOnOrder).length : 0,
+  const removedCodes = $derived(new Set(provisionalCheck?.removed ?? []));
+  const removedCount = $derived(
+    comparison
+      ? comparison.missing.filter((m) => !m.stillOnOrder && removedCodes.has(m.productCode)).length
+      : 0,
   );
+  const swappedCount = $derived(
+    comparison ? comparison.missing.filter((m) => !m.stillOnOrder).length - removedCount : 0,
+  );
+  let removeError = $state('');
+
+  // Give up on a missing item altogether: drop it (and its claims) from the
+  // order, remembering it was removed rather than swapped.
+  async function removeMissing(productCode: string) {
+    const item = orderItemByCode.get(productCode);
+    if (!item || !provisionalCheck) return;
+    removeError = '';
+    try {
+      await removeItemFromOrder(data.orderId, item.orderItem.id);
+      saveCheck({
+        ...provisionalCheck,
+        removed: [...(provisionalCheck.removed ?? []), productCode],
+      });
+      await loadReconciliation();
+    } catch (err: unknown) {
+      removeError = (err as Error).message || 'Failed to remove item';
+    }
+  }
 
   async function handleProvisionalUpload(e: Event & { currentTarget: HTMLInputElement }) {
     const input = e.currentTarget;
@@ -302,7 +329,8 @@
           {#if comparison.missing.length === 0}
             everything submitted is confirmed.
           {:else}
-            {outstandingCount} missing{#if swappedCount > 0}, {swappedCount} swapped{/if}{#if comparison.additions.length > 0},
+            {outstandingCount} missing{#if swappedCount > 0}, {swappedCount} swapped{/if}{#if removedCount > 0},
+              {removedCount} removed{/if}{#if comparison.additions.length > 0},
               {comparison.additions.length} to add{/if}.
           {/if}
         </small>
@@ -418,9 +446,13 @@
           <p>
             These items aren't (fully) on the provisional invoice.
             {#if isOrganiser && canSwap}
-              Swap them for an alternative, then add the replacements to the Infinity order.
+              Swap them for an alternative (then add the replacements to the Infinity order), or
+              remove them if nobody wants a substitute.
             {/if}
           </p>
+          {#if removeError}
+            <p><mark>{removeError}</mark></p>
+          {/if}
           <table class="check-table" data-testid="missing-items">
             <thead>
               <tr>
@@ -440,14 +472,26 @@
                   <td>{m.confirmed} of {m.ordered}</td>
                   <td>
                     {#if !m.stillOnOrder}
-                      <mark class="badge-swapped">Swapped</mark>
+                      <mark class="badge-resolved">
+                        {removedCodes.has(m.productCode) ? 'Removed' : 'Swapped'}
+                      </mark>
                     {:else if item && isOrganiser && canSwap}
-                      <button
-                        class="outline small swap-btn"
-                        onclick={() => handleSwap(item.orderItem.id)}
-                      >
-                        Swap
-                      </button>
+                      <div class="missing-actions">
+                        <button
+                          class="outline small swap-btn"
+                          onclick={() => handleSwap(item.orderItem.id)}
+                        >
+                          Swap
+                        </button>
+                        <ConfirmButton
+                          label="Remove"
+                          confirmLabel={item.claims.length === 0
+                            ? 'Remove?'
+                            : `Remove with ${item.claims.length} claim${item.claims.length === 1 ? '' : 's'}?`}
+                          onclick={() => removeMissing(m.productCode)}
+                          class="outline secondary small"
+                        />
+                      </div>
                     {/if}
                   </td>
                 </tr>
@@ -520,7 +564,7 @@
   }
 
   .check-summary button,
-  .check-dialog button.small {
+  .check-dialog :global(button.small) {
     padding: 0.2em 0.7em;
     font-size: 0.85em;
     width: auto;
@@ -570,8 +614,15 @@
     text-decoration: line-through;
   }
 
-  .badge-swapped {
+  .badge-resolved {
     white-space: nowrap;
+  }
+
+  .missing-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-1);
   }
 
   .include-toggle {

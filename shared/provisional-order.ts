@@ -21,6 +21,9 @@ export interface ProvisionalCheck {
   checkedAt: string;
   submitted: SubmittedLine[];
   provisional: ProvisionalLine[];
+  // Product codes the organiser gave up on and removed from the order, so
+  // they can be shown as removed rather than swapped.
+  removed?: string[];
 }
 
 export interface MissingLine {

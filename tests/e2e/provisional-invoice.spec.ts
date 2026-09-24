@@ -31,6 +31,8 @@ test.describe('Provisional invoice check', () => {
     // Chia Seeds (6×250g) and Washing Powder (1×12.5kg) — both full cases
     await addAndClaim('6052', '6');
     await addAndClaim('830560', '1');
+    // Greek olive oil tin (1×5l) — will be given up on rather than swapped
+    await addAndClaim('210525', '1');
 
     await page.click('a:has-text("Dashboard")');
     await page.waitForURL(/\/orders\/[a-zA-Z0-9_-]+$/);
@@ -40,7 +42,7 @@ test.describe('Provisional invoice check', () => {
 
     await page.click('a:has-text("Submission")');
     await page.waitForURL(/\/submission/);
-    await expect(page.getByTestId('copy-infinity')).toContainText('2 lines');
+    await expect(page.getByTestId('copy-infinity')).toContainText('3 lines');
 
     // Infinity could only supply the Chia Seeds
     await page
@@ -56,12 +58,19 @@ test.describe('Provisional invoice check', () => {
     const dialog = page.locator('dialog.check-dialog');
     await expect(dialog).toBeVisible();
     const missing = dialog.getByTestId('missing-items');
-    await expect(missing.locator('tbody tr')).toHaveCount(1);
+    await expect(missing.locator('tbody tr')).toHaveCount(2);
     await expect(missing).toContainText('830560');
     await expect(missing).toContainText('0 of 1');
 
+    // Nobody wants a substitute for the olive oil — remove it outright
+    const oilRow = missing.locator('tr', { hasText: '210525' });
+    await oilRow.locator('button:has-text("Remove")').click();
+    await oilRow.locator('button:has-text("Yes")').click();
+    await expect(oilRow.locator('mark:has-text("Removed")')).toBeVisible();
+    await expect(page.getByTestId('copy-infinity')).toContainText('2 lines');
+
     // Swap it and land back on the Submission page
-    await missing.locator('button:has-text("Swap")').click();
+    await missing.locator('tr', { hasText: '830560' }).locator('button:has-text("Swap")').click();
     await page.waitForURL(/\/swap\//);
     await page.fill('input[placeholder="Search products..."]', 'Amaranth');
     await page
@@ -74,7 +83,9 @@ test.describe('Provisional invoice check', () => {
 
     // The check survives the round trip; the swapped item is resolved and the
     // replacement is listed as something to add to the Infinity order.
-    await expect(page.getByTestId('provisional-summary')).toContainText('0 missing, 1 swapped');
+    await expect(page.getByTestId('provisional-summary')).toContainText(
+      '0 missing, 1 swapped, 1 removed',
+    );
 
     // The carried-over claim is only part of an Amaranth case, so it only
     // becomes an addition once the organiser ticks it for export.
