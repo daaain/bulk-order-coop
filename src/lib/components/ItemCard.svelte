@@ -304,14 +304,18 @@
             />
           {:else}
             <button class="outline" onclick={() => (showClaimForm = true)}> Add claim </button>
-            {#if orderItem.claims.length === 0 && onremoveitem}
-              <ConfirmButton
-                label="✕"
-                confirmLabel="Remove item?"
-                onclick={handleRemoveItem}
-                class="outline secondary"
-              />
-            {/if}
+          {/if}
+          <!-- Anyone can drop an unclaimed item; organisers can also drop claimed
+               ones, e.g. after substituting it by hand with a different amount. -->
+          {#if onremoveitem && (orderItem.claims.length === 0 || isOrganiser)}
+            <ConfirmButton
+              label="✕"
+              confirmLabel={orderItem.claims.length === 0
+                ? 'Remove item?'
+                : `Remove item and ${orderItem.claims.length} claim${orderItem.claims.length === 1 ? '' : 's'}?`}
+              onclick={handleRemoveItem}
+              class="outline secondary"
+            />
           {/if}
           {#if isOrganiser}
             <button

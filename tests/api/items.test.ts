@@ -525,16 +525,85 @@ describe('Item routes', () => {
       expect(items).toHaveLength(0);
     });
 
-    it('rejects deletion when item has claims', async () => {
-      const { member, orderId } = await seedOrder();
-      const { id: itemId } = await seedOrderItem(orderId, member.id, 'alice@test.local', '1001');
-
-      // Add a claim on this item
-      await authFetch(`/orders/${orderId}/items/${itemId}/claims`, member.id, 'alice@test.local', {
+    async function claim(orderId: string, itemId: string, memberId: string, email: string) {
+      await authFetch(`/orders/${orderId}/items/${itemId}/claims`, memberId, email, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount: 500 }),
       });
+    }
+
+    async function setStatus(orderId: string, status: string) {
+      await getDb()
+        .prepare('UPDATE orders SET status = ? WHERE id = ?')
+        .bind(status, orderId)
+        .run();
+    }
+
+    it('lets an organiser remove a claimed item, taking its claims with it', async () => {
+      const { member, orderId } = await seedOrder();
+      const bob = await seedMember('bob@test.local', 'Bob', 'BO');
+      await addOrderMember(orderId, bob.id);
+      const { id: itemId } = await seedOrderItem(orderId, member.id, 'alice@test.local', '1001');
+      await claim(orderId, itemId, bob.id, 'bob@test.local');
+      // Manual substitutions happen after the order has closed
+      await setStatus(orderId, 'closed');
+
+      const res = await authFetch(
+        `/orders/${orderId}/items/${itemId}`,
+        member.id,
+        'alice@test.local',
+        { method: 'DELETE' },
+      );
+
+      expect(res.status).toBe(200);
+      const remaining = await getDb()
+        .prepare('SELECT COUNT(*) AS n FROM claims WHERE order_item_id = ?')
+        .bind(itemId)
+        .first<{ n: number }>();
+      expect(remaining?.n).toBe(0);
+    });
+
+    it('rejects a member removing a claimed item', async () => {
+      const { member, orderId } = await seedOrder();
+      const bob = await seedMember('bob@test.local', 'Bob', 'BO');
+      await addOrderMember(orderId, bob.id);
+      const { id: itemId } = await seedOrderItem(orderId, member.id, 'alice@test.local', '1001');
+      await claim(orderId, itemId, member.id, 'alice@test.local');
+
+      const res = await authFetch(`/orders/${orderId}/items/${itemId}`, bob.id, 'bob@test.local', {
+        method: 'DELETE',
+      });
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/claims/i);
+    });
+
+    it('rejects a member removing an item once the order has closed', async () => {
+      const { member, orderId } = await seedOrder();
+      const bob = await seedMember('bob@test.local', 'Bob', 'BO');
+      await addOrderMember(orderId, bob.id);
+      const { id: itemId } = await seedOrderItem(orderId, member.id, 'alice@test.local', '1001');
+      await setStatus(orderId, 'closed');
+
+      const res = await authFetch(`/orders/${orderId}/items/${itemId}`, bob.id, 'bob@test.local', {
+        method: 'DELETE',
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects removal once the invoice has been processed', async () => {
+      const { member, orderId } = await seedOrder();
+      const { id: itemId } = await seedOrderItem(orderId, member.id, 'alice@test.local', '1001');
+      await setStatus(orderId, 'reconciling');
+      await getDb()
+        .prepare(
+          'INSERT INTO delivery_items (order_item_id, status, updated_by, updated_at) VALUES (?, ?, ?, ?)',
+        )
+        .bind(itemId, 'arrived', member.id, Math.floor(Date.now() / 1000))
+        .run();
 
       const res = await authFetch(
         `/orders/${orderId}/items/${itemId}`,
@@ -545,7 +614,7 @@ describe('Item routes', () => {
 
       expect(res.status).toBe(400);
       const body = (await res.json()) as { error: string };
-      expect(body.error).toMatch(/claims/i);
+      expect(body.error).toMatch(/invoice/i);
     });
   });
 });
