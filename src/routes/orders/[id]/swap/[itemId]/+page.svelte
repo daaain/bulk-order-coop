@@ -5,6 +5,7 @@
   import { searchItems, filterItems, getUniqueBrands, loadCatalogue } from '$lib/catalogue';
   import { fetchOrderItems, swapOrderItem } from '$lib/claims';
   import SearchFilter from '$lib/components/SearchFilter.svelte';
+  import { safeRedirect } from '$lib/redirect';
   import {
     formatPrice,
     formatCaseSize,
@@ -32,6 +33,11 @@
   let selectedTarget = $state<ParsedCatalogueItem | null>(null);
 
   let itemId = $derived($page.params.itemId);
+  // Where to go once the swap is done or cancelled — callers such as the
+  // Submission page pass `?return=` so the organiser lands back where they were.
+  let returnTo = $derived(
+    safeRedirect($page.url.searchParams.get('return')) ?? `/orders/${data.orderId}/catalogue`,
+  );
   let sourceOrderItem = $derived(orderItemsList.find((oi) => oi.orderItem.id === itemId));
   let orderItemByCode = $derived(
     new Map(orderItemsList.map((oi) => [oi.orderItem.productCode, oi])),
@@ -128,7 +134,7 @@
     error = '';
     try {
       await swapOrderItem(data.orderId, sourceOrderItem.orderItem.id, selectedTarget);
-      await goto(`/orders/${data.orderId}/catalogue`);
+      await goto(returnTo);
     } catch (err: unknown) {
       error = (err as Error).message || 'Failed to swap item';
       submitting = false;
@@ -184,8 +190,7 @@
     {#if sourceOrderItem.claims.length > 0}
       <p>
         <small>
-          <strong>{sourceOrderItem.claims.length}</strong> claim{sourceOrderItem.claims.length !==
-          1
+          <strong>{sourceOrderItem.claims.length}</strong> claim{sourceOrderItem.claims.length !== 1
             ? 's'
             : ''} will move to the new item.
         </small>
@@ -284,7 +289,7 @@
         <button class="outline secondary" onclick={cancelSelection} disabled={submitting}>
           Pick a different item
         </button>
-        <a href="/orders/{data.orderId}/catalogue">Cancel</a>
+        <a href={returnTo}>Cancel</a>
       </div>
     </section>
   {:else}
@@ -363,7 +368,7 @@
     {/if}
 
     <p>
-      <a href="/orders/{data.orderId}/catalogue">Cancel and return to catalogue</a>
+      <a href={returnTo}>Cancel and go back</a>
     </p>
   {/if}
 {/if}

@@ -119,7 +119,7 @@ export function parseCatalogueCsv(csv: string): ParsedCatalogueItem[] {
   return items;
 }
 
-function parseCsvLine(line: string): string[] {
+export function parseCsvLine(line: string): string[] {
   const result: string[] = [];
   let current = '';
   let inQuotes = false;

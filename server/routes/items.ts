@@ -412,7 +412,8 @@ app.delete('/:id/items/:itemId', async (c) => {
     return c.json({ error: 'You are not a member of this order' }, 403);
   }
 
-  // Check order is open
+  const isOrganiser = membership.role === 'organiser';
+
   const [order] = await db
     .select({ status: orders.status })
     .from(orders)
@@ -422,8 +423,13 @@ app.delete('/:id/items/:itemId', async (c) => {
     return c.json({ error: 'Order not found' }, 404);
   }
 
-  if (order.status !== 'open') {
+  // Members can only tidy up while the order is open; organisers can keep
+  // editing until the order is complete (same rule as claims).
+  if (!isOrganiser && order.status !== 'open') {
     return c.json({ error: 'Order is not open' }, 400);
+  }
+  if (order.status === 'complete') {
+    return c.json({ error: 'Order is complete' }, 400);
   }
 
   // Check item exists and belongs to this order
@@ -436,17 +442,39 @@ app.delete('/:id/items/:itemId', async (c) => {
     return c.json({ error: 'Item not found' }, 404);
   }
 
-  // Check no claims exist
+  // Only organisers may remove an item other members have claimed — e.g. when
+  // it has been substituted by hand with a different product and amount.
   const [existingClaim] = await db
     .select({ id: claims.id })
     .from(claims)
     .where(eq(claims.orderItemId, itemId));
 
-  if (existingClaim) {
+  if (existingClaim && !isOrganiser) {
     return c.json({ error: 'Cannot remove item with existing claims' }, 400);
   }
 
-  await db.delete(orderItems).where(eq(orderItems.id, itemId));
+  // Once the invoice has been processed the item is part of the delivery
+  // record, so it can no longer be removed (mirrors the swap rule).
+  const orderItemIds = (
+    await db.select({ id: orderItems.id }).from(orderItems).where(eq(orderItems.orderId, orderId))
+  ).map((r) => r.id);
+
+  const [anyDelivery] = await db
+    .select({ orderItemId: deliveryItems.orderItemId })
+    .from(deliveryItems)
+    .where(inArray(deliveryItems.orderItemId, orderItemIds))
+    .limit(1);
+
+  if (anyDelivery) {
+    return c.json({ error: 'Cannot remove items after the invoice has been processed' }, 400);
+  }
+
+  // D1 has no interactive transactions; a batch runs atomically, so the claims
+  // and the item are removed together or not at all.
+  await db.batch([
+    db.delete(claims).where(eq(claims.orderItemId, itemId)),
+    db.delete(orderItems).where(eq(orderItems.id, itemId)),
+  ]);
 
   return c.json({ success: true });
 });
