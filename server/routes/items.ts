@@ -469,8 +469,12 @@ app.delete('/:id/items/:itemId', async (c) => {
     return c.json({ error: 'Cannot remove items after the invoice has been processed' }, 400);
   }
 
-  await db.delete(claims).where(eq(claims.orderItemId, itemId));
-  await db.delete(orderItems).where(eq(orderItems.id, itemId));
+  // D1 has no interactive transactions; a batch runs atomically, so the claims
+  // and the item are removed together or not at all.
+  await db.batch([
+    db.delete(claims).where(eq(claims.orderItemId, itemId)),
+    db.delete(orderItems).where(eq(orderItems.id, itemId)),
+  ]);
 
   return c.json({ success: true });
 });
