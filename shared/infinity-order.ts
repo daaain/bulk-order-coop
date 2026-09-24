@@ -1,3 +1,5 @@
+import type { RoundingStatus } from './types';
+
 export interface InfinityOrderLine {
   productCode: string;
   cases: number;
@@ -50,4 +52,24 @@ export function splitAmountRandomly(
   const diff = total - amounts.reduce((a, b) => a + b, 0);
   amounts[amounts.length - 1] = Math.round((amounts[amounts.length - 1] + diff) * 100) / 100;
   return amounts;
+}
+
+// Items that go on the Infinity order: every complete-case item, plus any
+// "needs more takers" items the organiser has ticked because the shortfall was
+// agreed off-app (e.g. verbally on the group chat) but not yet claimed.
+export function selectInfinityOrderLines(
+  items: {
+    orderItem: { id: string; productCode: string };
+    rounding: { status: RoundingStatus; casesNeeded: number };
+  }[],
+  includedNeedsMore: ReadonlySet<string> = new Set(),
+): InfinityOrderLine[] {
+  return items
+    .filter(
+      (i) =>
+        i.rounding.casesNeeded > 0 &&
+        (i.rounding.status === 'ready' ||
+          (i.rounding.status === 'needs_more' && includedNeedsMore.has(i.orderItem.id))),
+    )
+    .map((i) => ({ productCode: i.orderItem.productCode, cases: i.rounding.casesNeeded }));
 }
