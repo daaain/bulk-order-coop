@@ -66,9 +66,7 @@ test.describe('Invoice-driven reconciliation', () => {
     await page.waitForURL(/\/invoice/);
 
     // Wait for the page to be ready
-    await expect(page.locator('input#invoice-pdf')).toBeVisible({
-      timeout: 15000,
-    });
+    await expect(page.locator('input#invoice-pdf')).toBeVisible({ timeout: 15000 });
 
     // 6. Upload the invoice PDF
     await page.setInputFiles(
@@ -123,5 +121,79 @@ test.describe('Invoice-driven reconciliation', () => {
     await markCompleteBtn.click();
     await page.click('button:has-text("Yes")');
     await expect(page.getByText('complete').first()).toBeVisible({ timeout: 15000 });
+  });
+
+  test('offers to start reconciliation from the invoice page when the order is open', async ({
+    page,
+  }) => {
+    await page.goto('/orders/new');
+    await page.fill('input[placeholder="e.g. January 2026 Order"]', 'Invoice Early Order');
+    await page.setInputFiles('input[type="file"]', path.resolve('tests/fixtures/invcat2.csv'));
+    await page.click('button:has-text("Create order")');
+    await page.waitForURL(/\/orders\/[a-zA-Z0-9_-]+$/);
+
+    await page.click('a:has-text("Invoice")');
+    await page.waitForURL(/\/invoice/);
+
+    const notice = page.getByTestId('start-reconciliation');
+    await expect(notice).toBeVisible({ timeout: 15000 });
+    await expect(notice).toContainText('This order is still open');
+    await expect(page.locator('button:has-text("Mark all as arrived")')).toHaveCount(0);
+
+    await notice.locator('button:has-text("Close order and start reconciliation")').click();
+    await notice.locator('button:has-text("Yes")').click();
+
+    await expect(notice).toHaveCount(0, { timeout: 15000 });
+    await expect(page.locator('button:has-text("Mark all as arrived")')).toBeVisible();
+  });
+
+  test('lists short lines on the claims page once the invoice marks them partial', async ({
+    page,
+  }) => {
+    await page.goto('/orders/new');
+    await page.fill('input[placeholder="e.g. January 2026 Order"]', 'Short Lines Order');
+    await page.setInputFiles('input[type="file"]', path.resolve('tests/fixtures/invcat2.csv'));
+    await page.click('button:has-text("Create order")');
+    await page.waitForURL(/\/orders\/[a-zA-Z0-9_-]+$/);
+
+    // Chia Seeds 6052 — 6×250g; claim a full case
+    await page.click('a:has-text("Catalogue")');
+    await page.waitForURL(/\/catalogue/);
+    await page.locator('input[placeholder="Search products..."]').fill('6052');
+    const article = page.locator('article:has-text("Code: 6052")').first();
+    await article.locator('button:has-text("Add to order")').click();
+    await article.locator('button:has-text("Add claim")').click();
+    await article.locator('input[type="number"]').fill('6');
+    await article.locator('button:has-text("Save claim")').click();
+    await expect(article.locator('button:has-text("Edit my claim")')).toBeVisible({
+      timeout: 15000,
+    });
+
+    await page.click('a:has-text("Invoice")');
+    await page.waitForURL(/\/invoice/);
+    const notice = page.getByTestId('start-reconciliation');
+    await notice.locator('button:has-text("Close order and start reconciliation")').click();
+    await notice.locator('button:has-text("Yes")').click();
+    await expect(notice).toHaveCount(0, { timeout: 15000 });
+
+    // Only 4 of the 6 packs arrived
+    const row = page.locator('tr', { hasText: 'Chia' });
+    await row.locator('select').selectOption('partial');
+    const saved = page.waitForResponse(
+      (res) =>
+        res.url().includes('/delivery') &&
+        res.request().method() === 'PUT' &&
+        res.status() === 200 &&
+        (res.request().postData() ?? '').includes('"actualQuantity":1000'),
+    );
+    await row.locator('input[type="number"]').fill('1000');
+    await row.locator('input[type="number"]').blur();
+    await saved;
+
+    await page.click('a:has-text("Claims")');
+    await page.waitForURL(/\/claims/);
+    const shortLines = page.getByTestId('short-lines');
+    await expect(shortLines).toBeVisible({ timeout: 15000 });
+    await expect(shortLines).toContainText('4 packs arrived, 6 packs claimed');
   });
 });
