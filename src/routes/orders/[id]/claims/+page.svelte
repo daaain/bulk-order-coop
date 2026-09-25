@@ -9,10 +9,16 @@
   } from '$lib/claims';
   import { formatClaimAmount, formatPrice, getCaseIncrement, isPackaged } from '$lib/format';
   import { loadCatalogue } from '$lib/catalogue';
+  import { fetchReconciliation } from '$lib/reconciliation';
   import ClaimForm from '$lib/components/ClaimForm.svelte';
   import ItemCard from '$lib/components/ItemCard.svelte';
   import ConfirmButton from '$lib/components/ConfirmButton.svelte';
-  import type { MyClaim, EnrichedOrderItem, RoundingStatus } from '$shared/types';
+  import type {
+    MyClaim,
+    EnrichedOrderItem,
+    RoundingStatus,
+    ReconciliationItem,
+  } from '$shared/types';
   import type { LayoutData } from '../$types';
   import { useAuth } from '$lib/auth.svelte';
   import { untrack } from 'svelte';
@@ -44,6 +50,22 @@
   let canEdit = $derived(
     isOrganiser ? data.order.status !== 'complete' : data.order.status === 'open',
   );
+
+  // While reconciling, lines the invoice marked as partial stay open for
+  // members to rebalance (e.g. give their share to someone else) until the
+  // item starts being split or collected. The server enforces the same rule.
+  let reconItems = $state<ReconciliationItem[]>([]);
+  let shortLines = $derived(
+    reconItems.filter(
+      (ri) =>
+        ri.delivery?.status === 'partial' &&
+        !ri.allocations.some((a) => a.confirmed || a.splitConfirmed),
+    ),
+  );
+  let shortLineIds = $derived(new Set(shortLines.map((ri) => ri.orderItem.id)));
+  let canEditItem = (itemId: string) =>
+    canEdit || (data.order.status === 'reconciling' && shortLineIds.has(itemId));
+  let anyEditable = $derived(canEdit || shortLineIds.size > 0);
 
   const flexLabels: Record<string, string> = {
     '*': 'Exact',
@@ -94,11 +116,13 @@
     if (isInitialLoad) loading = true;
     error = '';
     try {
-      const [claimsResult, items, catalogue] = await Promise.all([
+      const [claimsResult, items, catalogue, recon] = await Promise.all([
         fetchMyClaims(data.orderId),
         fetchOrderItems(data.orderId),
         loadCatalogue(data.orderId, data.order.catalogueKey).catch(() => []),
+        data.order.status === 'reconciling' ? fetchReconciliation(data.orderId) : null,
       ]);
+      reconItems = recon?.items ?? [];
       claims = claimsResult.claims;
       totals = claimsResult.totals;
       orderItems = items;
@@ -196,9 +220,43 @@
 
 {#if loading}
   <p aria-busy="true">Loading claims...</p>
-{:else if error}
+{:else if error && orderItems.length === 0 && claims.length === 0}
   <p><mark>{error}</mark></p>
 {:else}
+  {#if error}
+    <p><mark>{error}</mark></p>
+  {/if}
+
+  {#if shortLines.length > 0}
+    <article class="short-lines" data-testid="short-lines">
+      <p>
+        <strong>
+          {shortLines.length === 1 ? 'One item' : `${shortLines.length} items`} came up short on the invoice.
+        </strong>
+        What arrived has been shared out in proportion to everyone's claims. If you'd rather give your
+        share to someone else, or take up a share someone has given up, adjust your claim below. The total
+        can't go above what arrived.
+      </p>
+      <ul>
+        {#each shortLines as ri (ri.orderItem.id)}
+          <li>
+            {ri.catalogueItem.description}: {formatClaimAmount(
+              ri.delivery?.actualQuantity ?? 0,
+              ri.catalogueItem.unitsPerCase,
+              ri.catalogueItem.packSize,
+              ri.catalogueItem.unit,
+            )} arrived, {formatClaimAmount(
+              ri.rounding.totalClaimed,
+              ri.catalogueItem.unitsPerCase,
+              ri.catalogueItem.packSize,
+              ri.catalogueItem.unit,
+            )} claimed
+          </li>
+        {/each}
+      </ul>
+    </article>
+  {/if}
+
   <!-- Order Items section -->
   <div class="section-header">
     <h2>Order Items</h2>
@@ -221,14 +279,14 @@
           item={{ ...oi.catalogueItem, onOffer: onOfferCodes.has(oi.catalogueItem.productCode) }}
           orderItem={oi}
           {currentMemberId}
-          {canEdit}
+          canEdit={canEditItem(oi.orderItem.id)}
           {isOrganiser}
           members={data.order.members}
           onclaim={handleCreateClaim}
           onupdateclaim={handleUpdateOrderItemClaim}
           onremoveclaim={handleRemoveOrderItemClaim}
-          onremoveitem={handleRemoveItem}
-          onswap={(itemId) => goto(`/orders/${data.orderId}/swap/${itemId}`)}
+          onremoveitem={canEdit ? handleRemoveItem : undefined}
+          onswap={canEdit ? (itemId) => goto(`/orders/${data.orderId}/swap/${itemId}`) : undefined}
         />
       {/each}
     </div>
@@ -254,7 +312,7 @@
             <th>Amount</th>
             <th>Flexibility</th>
             <th>Est. cost</th>
-            {#if canEdit}
+            {#if anyEditable}
               <th></th>
             {/if}
           </tr>
@@ -262,7 +320,7 @@
         {#each groupedClaims as group (group.status)}
           <tbody class="claims-group status-{group.status}">
             <tr class="group-header">
-              <th colspan={canEdit ? 5 : 4}>{statusLabels[group.status]}</th>
+              <th colspan={anyEditable ? 5 : 4}>{statusLabels[group.status]}</th>
             </tr>
             {#each group.claims as mc (mc.claim.id)}
               {@const packaged = isPackaged(mc.catalogueItem.unitsPerCase)}
@@ -278,7 +336,7 @@
                 </td>
                 <td>{flexLabels[mc.claim.flexibility ?? '*'] ?? mc.claim.flexibility}</td>
                 <td>{formatPrice(mc.estimatedCost.gross)}</td>
-                {#if canEdit}
+                {#if canEditItem(mc.claim.orderItemId)}
                   <td>
                     {#if editingItemId === mc.claim.orderItemId}
                       <ClaimForm
@@ -313,6 +371,8 @@
                       </div>
                     {/if}
                   </td>
+                {:else if anyEditable}
+                  <td></td>
                 {/if}
               </tr>
             {/each}
@@ -320,7 +380,7 @@
               <td colspan="2"></td>
               <td><strong>Subtotal</strong></td>
               <td>{formatPrice(group.subtotal)}</td>
-              {#if canEdit}<td></td>{/if}
+              {#if anyEditable}<td></td>{/if}
             </tr>
           </tbody>
         {/each}
@@ -329,7 +389,7 @@
             <td colspan="2"></td>
             <td><strong>Total</strong></td>
             <td><strong>{formatPrice(totals.gross)}</strong></td>
-            {#if canEdit}<td></td>{/if}
+            {#if anyEditable}<td></td>{/if}
           </tr>
         </tfoot>
       </table>
@@ -338,6 +398,14 @@
 {/if}
 
 <style>
+  .short-lines {
+    padding: 1rem;
+  }
+
+  .short-lines ul {
+    margin-bottom: 0;
+  }
+
   .section-header {
     display: flex;
     align-items: center;

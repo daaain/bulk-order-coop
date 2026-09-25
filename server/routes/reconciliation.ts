@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
 import { and, eq, inArray } from 'drizzle-orm';
-import { nanoid } from 'nanoid';
 import type { Bindings } from '../index';
 import type { JwtPayload } from '../services/jwt';
 import { requireAuth } from '../middleware/auth';
@@ -14,7 +13,7 @@ import {
   deliveryItems,
   allocations,
 } from '../../db/schema';
-import { validateDeliveryUpdate, computeAllocations } from '../services/reconciliation';
+import { validateDeliveryUpdate } from '../services/reconciliation';
 import { calculateRounding } from '../../shared/rounding';
 import { calculateCaseSize, estimateCost, applyDiscount } from '../../shared/costs';
 import type {
@@ -27,6 +26,7 @@ import type {
 } from '../../shared/types';
 import { DEFAULT_ADMIN_FEE_PERCENTAGE } from '../../shared/types';
 import { catalogueItemFromOrderItem } from './items';
+import { orderHasAllocations, recalculateAllocations } from '../services/allocations';
 
 const app = new Hono<{
   Bindings: Bindings;
@@ -114,6 +114,11 @@ app.put('/:id/items/:itemId/delivery', async (c) => {
         updatedBy: memberId,
         updatedAt: now,
       });
+  }
+
+  // Keep members' shares in sync once allocations have been generated.
+  if (await orderHasAllocations(db, orderId)) {
+    await recalculateAllocations(db, orderId, [itemId]);
   }
 
   const [delivery] = await db
@@ -367,8 +372,7 @@ app.get('/:id/reconciliation', async (c) => {
     const subtotal = Math.round(subtotalBeforeDiscount * 100) / 100;
     const discountAmount = Math.round(((subtotal * discountPct) / 100) * 100) / 100;
     const adminFeeAmount = Math.round(((subtotal * adminPct) / 100) * 100) / 100;
-    const memberDiscountAmount =
-      Math.round(((subtotal * memberDiscountPct) / 100) * 100) / 100;
+    const memberDiscountAmount = Math.round(((subtotal * memberDiscountPct) / 100) * 100) / 100;
     discount = {
       discountPercentage: discountPct,
       adminFeePercentage: adminPct,
@@ -412,11 +416,7 @@ app.post('/:id/allocate', async (c) => {
   }
 
   const [order] = await db
-    .select({
-      status: orders.status,
-      discountPercentage: orders.discountPercentage,
-      adminFeePercentage: orders.adminFeePercentage,
-    })
+    .select({ status: orders.status })
     .from(orders)
     .where(eq(orders.id, orderId));
 
@@ -428,98 +428,22 @@ app.post('/:id/allocate', async (c) => {
     return c.json({ error: 'Order must be in reconciling status' }, 400);
   }
 
-  const allocateDiscountPct = order.discountPercentage ?? 0;
-  const allocateAdminPct = order.adminFeePercentage ?? DEFAULT_ADMIN_FEE_PERCENTAGE;
-  const allocateMemberDiscountPct = Math.max(0, allocateDiscountPct - allocateAdminPct);
+  const [anyItem] = await db
+    .select({ id: orderItems.id })
+    .from(orderItems)
+    .where(eq(orderItems.orderId, orderId))
+    .limit(1);
 
-  // Get all order items (with product snapshots)
-  const items = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
-
-  if (items.length === 0) {
+  if (!anyItem) {
     return c.json({ error: 'No items on this order' }, 400);
   }
 
-  const itemIds = items.map((i) => i.id);
-
-  // Get delivery statuses for all items
-  const deliveries = await db
-    .select()
-    .from(deliveryItems)
-    .where(inArray(deliveryItems.orderItemId, itemIds));
-
-  const deliveryMap = new Map(deliveries.map((d) => [d.orderItemId, d]));
-
-  // Check all items have delivery status
-  const missingDelivery = items.filter((i) => !deliveryMap.has(i.id));
-  if (missingDelivery.length > 0) {
-    return c.json(
-      {
-        error: `${missingDelivery.length} item(s) are missing delivery status. All items must have a delivery status before generating allocations.`,
-      },
-      400,
-    );
+  const result = await recalculateAllocations(db, orderId);
+  if ('error' in result) {
+    return c.json({ error: result.error }, 400);
   }
 
-  // Get all claims
-  const allClaims = await db.select().from(claims).where(inArray(claims.orderItemId, itemIds));
-
-  const claimsByItem = new Map<string, typeof allClaims>();
-  for (const claim of allClaims) {
-    const list = claimsByItem.get(claim.orderItemId) ?? [];
-    list.push(claim);
-    claimsByItem.set(claim.orderItemId, list);
-  }
-
-  // Delete existing allocations for this order (idempotent re-run)
-  await db.delete(allocations).where(inArray(allocations.orderItemId, itemIds));
-
-  // Generate allocations for each item
-  const allNewAllocations: Array<{
-    id: string;
-    orderItemId: string;
-    memberId: string;
-    amount: number;
-    price: number;
-    confirmed: number;
-  }> = [];
-
-  for (const item of items) {
-    const delivery = deliveryMap.get(item.id)!;
-    const itemClaims = claimsByItem.get(item.id) ?? [];
-    const caseSize = calculateCaseSize(item.unitsPerCase, item.packSize);
-    const rounding = calculateRounding(itemClaims, item.unitsPerCase, item.packSize);
-
-    const computed = computeAllocations(
-      itemClaims.map((cl) => ({ memberId: cl.memberId, amount: cl.amount })),
-      delivery.status as 'arrived' | 'missing' | 'partial' | 'different_price',
-      caseSize,
-      rounding.casesNeeded,
-      item.casePrice,
-      item.vatRate,
-      delivery.actualPrice,
-      delivery.actualQuantity,
-      allocateMemberDiscountPct,
-    );
-
-    for (const alloc of computed) {
-      allNewAllocations.push({
-        id: nanoid(),
-        orderItemId: item.id,
-        memberId: alloc.memberId,
-        amount: alloc.amount,
-        price: alloc.price,
-        confirmed: 0,
-      });
-    }
-  }
-
-  // Batch insert allocations — D1 caps SQL variables per statement, so chunk
-  const CHUNK_SIZE = 10;
-  for (let i = 0; i < allNewAllocations.length; i += CHUNK_SIZE) {
-    await db.insert(allocations).values(allNewAllocations.slice(i, i + CHUNK_SIZE));
-  }
-
-  return c.json({ count: allNewAllocations.length });
+  return c.json({ count: result.count });
 });
 
 // PUT /:id/allocations/:allocationId/checks — Toggle split / picked-up flags
@@ -570,10 +494,7 @@ app.put('/:id/allocations/:allocationId/checks', async (c) => {
     return c.json({ error: 'Order must be in reconciling status' }, 400);
   }
 
-  const [alloc] = await db
-    .select()
-    .from(allocations)
-    .where(eq(allocations.id, allocationId));
+  const [alloc] = await db.select().from(allocations).where(eq(allocations.id, allocationId));
 
   if (!alloc) {
     return c.json({ error: 'Allocation not found' }, 404);

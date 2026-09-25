@@ -334,14 +334,15 @@
           <ul>
             {#if data.order.status === 'open'}
               <li>
-                Close the order — members will no longer be able to add, change or remove their
-                claims, and no new items can be added from the catalogue. Organisers can still
-                adjust claims.
+                Close the order — no more items can be added from the catalogue, and members can no
+                longer change their claims freely. Organisers can still adjust any claim.
               </li>
             {/if}
             <li>
               Move the order into reconciliation. Once an invoice is applied, members can no longer
-              swap items on the Submission page.
+              swap items on the Submission page. They can still adjust their claims on items that
+              came up short, for example to give their share to someone else, and allocations update
+              automatically when they do.
             </li>
             <li>This can't be undone — orders can't be moved back to an earlier status.</li>
           </ul>

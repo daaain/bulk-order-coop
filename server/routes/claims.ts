@@ -1,16 +1,24 @@
 import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, or } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import type { Bindings } from '../index';
 import type { JwtPayload } from '../services/jwt';
 import { requireAuth } from '../middleware/auth';
-import { orders, orderMembers, orderItems, claims } from '../../db/schema';
+import {
+  orders,
+  orderMembers,
+  orderItems,
+  claims,
+  deliveryItems,
+  allocations,
+} from '../../db/schema';
 import { validateClaim } from '../services/items';
 import { calculateRounding } from '../../shared/rounding';
 import { estimateCost, calculateCaseSize } from '../../shared/costs';
 import type { MyClaim } from '../../shared/types';
 import { catalogueItemFromOrderItem } from './items';
+import { orderHasAllocations, recalculateAllocations } from '../services/allocations';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 
 const app = new Hono<{
@@ -31,8 +39,7 @@ async function resolveClaimTarget(
   callerId: string,
   bodyMemberId?: string,
 ): Promise<
-  | { targetMemberId: string; isOrganiser: boolean }
-  | { error: string; status: 403 | 400 }
+  { targetMemberId: string; isOrganiser: boolean } | { error: string; status: 403 | 400 }
 > {
   const [callerMembership] = await db
     .select({ role: orderMembers.role })
@@ -65,18 +72,81 @@ async function resolveClaimTarget(
   return { targetMemberId: callerId, isOrganiser };
 }
 
-/** Check order status and return an error response if the operation is not allowed. */
-function checkOrderStatus(
+const SHORT_LINE_ONLY =
+  'Once the order has closed, members can only adjust claims on items that came up short on the invoice';
+const ALREADY_DISTRIBUTED =
+  'This item has already been split or collected, so claims can no longer change';
+const OVER_DELIVERED =
+  "Less arrived than was claimed, so the total can't go above what was delivered. Someone needs to reduce their claim first.";
+
+/**
+ * Check whether a claim may be set to `newAmount` (0 when removing it) and
+ * return an error response if not.
+ *
+ * Organisers can edit until the order is complete. Members can edit freely
+ * while the order is open; once it's reconciling they can adjust claims on
+ * lines the invoice marked as partial — e.g. to give their share to someone
+ * else — as long as the total doesn't grow beyond what was delivered and
+ * nobody has started splitting or collecting that item yet.
+ */
+async function checkClaimChange(
+  db: DrizzleD1Database,
   status: string,
   isOrganiser: boolean,
-): { error: string } | null {
-  if (!isOrganiser && status !== 'open') {
-    return { error: 'Order is not open' };
+  itemId: string,
+  targetMemberId: string,
+  newAmount: number,
+): Promise<{ error: string } | null> {
+  if (status === 'complete') {
+    return { error: isOrganiser ? 'Order is complete' : 'Order is not open' };
   }
-  if (isOrganiser && status === 'complete') {
-    return { error: 'Order is complete' };
+  if (isOrganiser || status === 'open') return null;
+  if (status !== 'reconciling') return { error: 'Order is not open' };
+
+  const [delivery] = await db
+    .select()
+    .from(deliveryItems)
+    .where(eq(deliveryItems.orderItemId, itemId));
+  if (!delivery || delivery.status !== 'partial') return { error: SHORT_LINE_ONLY };
+
+  const [distributed] = await db
+    .select({ id: allocations.id })
+    .from(allocations)
+    .where(
+      and(
+        eq(allocations.orderItemId, itemId),
+        or(eq(allocations.confirmed, 1), eq(allocations.splitConfirmed, 1)),
+      ),
+    )
+    .limit(1);
+  if (distributed) return { error: ALREADY_DISTRIBUTED };
+
+  const itemClaims = await db
+    .select({ memberId: claims.memberId, amount: claims.amount })
+    .from(claims)
+    .where(eq(claims.orderItemId, itemId));
+  const oldTotal = itemClaims.reduce((sum, cl) => sum + cl.amount, 0);
+  const current = itemClaims.find((cl) => cl.memberId === targetMemberId)?.amount ?? 0;
+  const newTotal = oldTotal - current + newAmount;
+  const EPSILON = 1e-9;
+
+  // Reductions are always fine; increases must fit within what arrived.
+  if (newTotal > oldTotal + EPSILON && newTotal > (delivery.actualQuantity ?? 0) + EPSILON) {
+    return { error: OVER_DELIVERED };
   }
   return null;
+}
+
+/** Keep members' shares in sync once an organiser has generated allocations. */
+async function syncAllocations(
+  db: DrizzleD1Database,
+  status: string,
+  orderId: string,
+  itemId: string,
+) {
+  if (status === 'reconciling' && (await orderHasAllocations(db, orderId))) {
+    await recalculateAllocations(db, orderId, [itemId]);
+  }
 }
 
 // POST /:id/items/:itemId/claims — Create claim
@@ -103,11 +173,6 @@ app.post('/:id/items/:itemId/claims', async (c) => {
     return c.json({ error: 'Order not found' }, 404);
   }
 
-  const statusError = checkOrderStatus(order.status, target.isOrganiser);
-  if (statusError) {
-    return c.json(statusError, 400);
-  }
-
   // Check item exists and belongs to this order
   const [item] = await db
     .select()
@@ -121,6 +186,18 @@ app.post('/:id/items/:itemId/claims', async (c) => {
   const validated = validateClaim(body);
   if ('error' in validated) {
     return c.json({ error: validated.error }, 400);
+  }
+
+  const statusError = await checkClaimChange(
+    db,
+    order.status,
+    target.isOrganiser,
+    itemId,
+    target.targetMemberId,
+    validated.amount,
+  );
+  if (statusError) {
+    return c.json(statusError, 400);
   }
 
   // Check for duplicate claim
@@ -147,6 +224,7 @@ app.post('/:id/items/:itemId/claims', async (c) => {
   };
 
   await db.insert(claims).values(claim);
+  await syncAllocations(db, order.status, orderId, itemId);
 
   // Fetch all claims for rounding
   const allClaims = await db
@@ -183,11 +261,6 @@ app.put('/:id/items/:itemId/claims', async (c) => {
     return c.json({ error: 'Order not found' }, 404);
   }
 
-  const statusError = checkOrderStatus(order.status, target.isOrganiser);
-  if (statusError) {
-    return c.json(statusError, 400);
-  }
-
   // Check item exists
   const [item] = await db
     .select()
@@ -201,6 +274,18 @@ app.put('/:id/items/:itemId/claims', async (c) => {
   const validated = validateClaim(body);
   if ('error' in validated) {
     return c.json({ error: validated.error }, 400);
+  }
+
+  const statusError = await checkClaimChange(
+    db,
+    order.status,
+    target.isOrganiser,
+    itemId,
+    target.targetMemberId,
+    validated.amount,
+  );
+  if (statusError) {
+    return c.json(statusError, 400);
   }
 
   // Check claim exists for the target member
@@ -219,6 +304,7 @@ app.put('/:id/items/:itemId/claims', async (c) => {
     .update(claims)
     .set({ amount: validated.amount, flexibility: validated.flexibility ?? null, updatedAt: now })
     .where(eq(claims.id, existing.id));
+  await syncAllocations(db, order.status, orderId, itemId);
 
   const updatedClaim = {
     ...existing,
@@ -262,7 +348,14 @@ app.delete('/:id/items/:itemId/claims', async (c) => {
     return c.json({ error: 'Order not found' }, 404);
   }
 
-  const statusError = checkOrderStatus(order.status, target.isOrganiser);
+  const statusError = await checkClaimChange(
+    db,
+    order.status,
+    target.isOrganiser,
+    itemId,
+    target.targetMemberId,
+    0,
+  );
   if (statusError) {
     return c.json(statusError, 400);
   }
@@ -288,6 +381,7 @@ app.delete('/:id/items/:itemId/claims', async (c) => {
   }
 
   await db.delete(claims).where(eq(claims.id, existing.id));
+  await syncAllocations(db, order.status, orderId, itemId);
 
   // Fetch remaining claims for rounding
   const remainingClaims = await db

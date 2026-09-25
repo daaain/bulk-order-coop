@@ -278,10 +278,7 @@ describe('Reconciliation API', () => {
       expect(body.discount!.adminFeePercentage).toBe(2);
       expect(body.discount!.memberDiscountPercentage).toBe(4);
       // The pre-discount subtotal should recover the raw net (2.5916…).
-      expect(body.discount!.subtotalBeforeDiscount).toBeCloseTo(
-        (500 / 3000) * 15.55,
-        2,
-      );
+      expect(body.discount!.subtotalBeforeDiscount).toBeCloseTo((500 / 3000) * 15.55, 2);
     });
 
     it('returns discount: null when no invoice discount is applied', async () => {
@@ -513,9 +510,11 @@ describe('Reconciliation API', () => {
     }
 
     it('toggles split flag, callable by any order member', async () => {
-      const { member, orderId, allocations: allocs } = await setupWithAllocations({
-        secondMember: true,
-      });
+      const {
+        member,
+        orderId,
+        allocations: allocs,
+      } = await setupWithAllocations({ secondMember: true });
       // The organiser owns the allocation; the other member toggles split.
       const ownerAlloc = allocs.find((a) => a.memberId !== member!.id)!;
 
@@ -635,6 +634,153 @@ describe('Reconciliation API', () => {
         },
       );
       expect(res.status).toBe(403);
+    });
+  });
+
+  describe('Claim edits after the invoice', () => {
+    type Alloc = {
+      id: string;
+      memberId: string;
+      amount: number;
+      confirmed: boolean;
+      splitConfirmed: boolean;
+    };
+    const json = { 'Content-Type': 'application/json' };
+
+    /**
+     * Two members each claim 500g; the invoice delivers `delivery`, and
+     * allocations are generated.
+     */
+    async function setupDelivered(delivery: { status: string; actualQuantity?: number }) {
+      const ctx = await setupReconcilingOrder({ secondMember: true });
+      await authFetch(
+        `/orders/${ctx.orderId}/items/${ctx.itemId}/delivery`,
+        ctx.organiser.id,
+        'organiser@test.local',
+        { method: 'PUT', headers: json, body: JSON.stringify(delivery) },
+      );
+      await authFetch(`/orders/${ctx.orderId}/allocate`, ctx.organiser.id, 'organiser@test.local', {
+        method: 'POST',
+      });
+      return { ...ctx, member: ctx.member! };
+    }
+
+    async function allocationsFor(orderId: string, organiserId: string): Promise<Alloc[]> {
+      const res = await authFetch(
+        `/orders/${orderId}/reconciliation`,
+        organiserId,
+        'organiser@test.local',
+      );
+      const body = (await res.json()) as { items: Array<{ allocations: Alloc[] }> };
+      return body.items[0].allocations;
+    }
+
+    function memberClaim(
+      ctx: { orderId: string; itemId: string; member: { id: string } },
+      method: 'PUT' | 'DELETE',
+      amount?: number,
+    ) {
+      return authFetch(
+        `/orders/${ctx.orderId}/items/${ctx.itemId}/claims`,
+        ctx.member.id,
+        'member@test.local',
+        method === 'PUT' ? { method, headers: json, body: JSON.stringify({ amount }) } : { method },
+      );
+    }
+
+    it('blocks members from editing claims on lines that arrived in full', async () => {
+      const ctx = await setupDelivered({ status: 'arrived' });
+      const res = await memberClaim(ctx, 'PUT', 250);
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/came up short/);
+    });
+
+    it('lets a member give up their share of a short line and regenerates allocations', async () => {
+      const ctx = await setupDelivered({ status: 'partial', actualQuantity: 500 });
+
+      // Pro-rata starting point: 500g delivered across 1000g claimed
+      const before = await allocationsFor(ctx.orderId, ctx.organiser.id);
+      expect(before.map((a) => a.amount).sort()).toEqual([250, 250]);
+
+      const res = await memberClaim(ctx, 'DELETE');
+      expect(res.status).toBe(200);
+
+      const after = await allocationsFor(ctx.orderId, ctx.organiser.id);
+      expect(after).toHaveLength(1);
+      expect(after[0]).toMatchObject({ memberId: ctx.organiser.id, amount: 500 });
+    });
+
+    it('lets a member take up a share someone gave up, within what was delivered', async () => {
+      const ctx = await setupDelivered({ status: 'partial', actualQuantity: 750 });
+
+      // 500 + 750 = 1250g > 750g delivered, and the total would grow
+      const tooMuch = await memberClaim(ctx, 'PUT', 750);
+      expect(tooMuch.status).toBe(400);
+      const body = (await tooMuch.json()) as { error: string };
+      expect(body.error).toMatch(/can't go above what was delivered/);
+
+      // Organiser steps back to 0.25 of their claim (125g), leaving room
+      await authFetch(
+        `/orders/${ctx.orderId}/items/${ctx.itemId}/claims`,
+        ctx.organiser.id,
+        'organiser@test.local',
+        { method: 'PUT', headers: json, body: JSON.stringify({ amount: 125 }) },
+      );
+
+      const ok = await memberClaim(ctx, 'PUT', 625);
+      expect(ok.status).toBe(200);
+
+      const allocs = await allocationsFor(ctx.orderId, ctx.organiser.id);
+      const byMember = Object.fromEntries(allocs.map((a) => [a.memberId, a.amount]));
+      expect(byMember).toEqual({ [ctx.organiser.id]: 125, [ctx.member.id]: 625 });
+    });
+
+    it('blocks member edits once the item has been split', async () => {
+      const ctx = await setupDelivered({ status: 'partial', actualQuantity: 500 });
+      const [alloc] = await allocationsFor(ctx.orderId, ctx.organiser.id);
+      await authFetch(
+        `/orders/${ctx.orderId}/allocations/${alloc.id}/checks`,
+        ctx.organiser.id,
+        'organiser@test.local',
+        { method: 'PUT', headers: json, body: JSON.stringify({ split: true }) },
+      );
+
+      const res = await memberClaim(ctx, 'PUT', 250);
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/already been split or collected/);
+    });
+
+    it('keeps distribution flags on allocations whose amount did not change', async () => {
+      const ctx = await setupDelivered({ status: 'arrived' });
+      const before = await allocationsFor(ctx.orderId, ctx.organiser.id);
+      const own = before.find((a) => a.memberId === ctx.organiser.id)!;
+      await authFetch(
+        `/orders/${ctx.orderId}/allocations/${own.id}/checks`,
+        ctx.organiser.id,
+        'organiser@test.local',
+        { method: 'PUT', headers: json, body: JSON.stringify({ pickedUp: true }) },
+      );
+
+      // Organiser changes the other member's claim
+      await authFetch(
+        `/orders/${ctx.orderId}/items/${ctx.itemId}/claims`,
+        ctx.organiser.id,
+        'organiser@test.local',
+        {
+          method: 'PUT',
+          headers: json,
+          body: JSON.stringify({ amount: 1000, memberId: ctx.member.id }),
+        },
+      );
+
+      const after = await allocationsFor(ctx.orderId, ctx.organiser.id);
+      expect(after.find((a) => a.memberId === ctx.organiser.id)).toMatchObject({
+        amount: 500,
+        confirmed: true,
+      });
+      expect(after.find((a) => a.memberId === ctx.member.id)).toMatchObject({ amount: 1000 });
     });
   });
 });
