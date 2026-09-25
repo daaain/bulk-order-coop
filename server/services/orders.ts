@@ -46,6 +46,8 @@ export interface UpdateOrderInput {
   status?: string;
   discountPercentage?: number | null;
   adminFeePercentage?: number | null;
+  invoiceNumber?: string | null;
+  invoiceTotal?: number | null;
 }
 
 function validatePercentField(
@@ -67,10 +69,15 @@ export function validateUpdateOrder(body: unknown): UpdateOrderInput | { error: 
     return { error: 'Request body must be an object' };
   }
 
-  const { name, deadline, status, discountPercentage, adminFeePercentage } = body as Record<
-    string,
-    unknown
-  >;
+  const {
+    name,
+    deadline,
+    status,
+    discountPercentage,
+    adminFeePercentage,
+    invoiceNumber,
+    invoiceTotal,
+  } = body as Record<string, unknown>;
 
   const result: UpdateOrderInput = {};
 
@@ -107,10 +114,30 @@ export function validateUpdateOrder(body: unknown): UpdateOrderInput | { error: 
     result.adminFeePercentage = v.value;
   }
 
+  if (invoiceNumber !== undefined) {
+    if (
+      invoiceNumber !== null &&
+      (typeof invoiceNumber !== 'string' || invoiceNumber.trim() === '')
+    ) {
+      return { error: 'invoiceNumber must be a non-empty string or null' };
+    }
+    result.invoiceNumber = invoiceNumber === null ? null : invoiceNumber.trim();
+  }
+
+  if (invoiceTotal !== undefined) {
+    if (
+      invoiceTotal !== null &&
+      (typeof invoiceTotal !== 'number' || !Number.isFinite(invoiceTotal) || invoiceTotal < 0)
+    ) {
+      return { error: 'invoiceTotal must be a non-negative number or null' };
+    }
+    result.invoiceTotal = invoiceTotal;
+  }
+
   if (Object.keys(result).length === 0) {
     return {
       error:
-        'At least one field (name, deadline, status, discountPercentage, adminFeePercentage) is required',
+        'At least one field (name, deadline, status, discountPercentage, adminFeePercentage, invoiceNumber, invoiceTotal) is required',
     };
   }
 

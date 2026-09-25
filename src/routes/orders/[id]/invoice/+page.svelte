@@ -58,6 +58,41 @@
   let startingReconciliation = $state(false);
   let statusError = $state('');
 
+  const roundPence = (value: number) => Math.round(value * 100) / 100;
+  const formatPercent = (value: number) => `${value.toFixed(value % 1 === 0 ? 0 : 1)}%`;
+  const formatSigned = (value: number) => `${value < 0 ? '−' : '+'}${formatPrice(Math.abs(value))}`;
+
+  // Trace what members pay back to the supplier invoice. Infinity discounts
+  // net and VAT alike, so the Ltd's admin share is its percentage of the
+  // full-price gross. Anything beyond that and a little rounding means the
+  // invoice and the allocations disagree, so it's flagged rather than
+  // silently counted as admin.
+  const MISMATCH_TOLERANCE = 1;
+  const membersTotal = $derived(recon?.orderTotals.gross ?? 0);
+  const invoiceTotal = $derived(data.order.invoiceTotal ?? null);
+  const fullPriceTotal = $derived.by(() => {
+    const factor = 1 - (recon?.discount?.memberDiscountPercentage ?? 0) / 100;
+    return factor > 0 ? membersTotal / factor : membersTotal;
+  });
+  const memberSaving = $derived(roundPence(fullPriceTotal - membersTotal));
+  const expectedAdmin = $derived(
+    recon?.discount ? roundPence((fullPriceTotal * recon.discount.adminFeePercentage) / 100) : 0,
+  );
+  const invoiceDifference = $derived(
+    invoiceTotal === null ? null : roundPence(membersTotal - invoiceTotal),
+  );
+  const invoiceMatches = $derived(
+    invoiceDifference !== null && Math.abs(invoiceDifference - expectedAdmin) <= MISMATCH_TOLERANCE,
+  );
+  // With a matching invoice the admin row absorbs the pennies of rounding, so
+  // the breakdown adds up exactly.
+  const keptByLtd = $derived(
+    invoiceMatches && invoiceDifference !== null ? invoiceDifference : expectedAdmin,
+  );
+  const unexplained = $derived(
+    invoiceDifference === null || invoiceMatches ? 0 : roundPence(invoiceDifference - keptByLtd),
+  );
+
   const hasAllocations = $derived(recon !== null && recon.memberSummaries.length > 0);
 
   const allDeliverySet = $derived(
@@ -210,13 +245,16 @@
         }),
       );
 
-      if (shouldApplyDiscount) {
-        const updated = await updateOrder(data.orderId, {
-          discountPercentage: discountPct,
-          adminFeePercentage: adminFeeInput,
-        });
-        data.order = { ...data.order, ...updated };
-      }
+      // Keep the invoice total so the order totals can be traced back to what
+      // the Ltd actually pays the supplier.
+      const updated = await updateOrder(data.orderId, {
+        invoiceNumber: parsedInvoice.invoiceNumber || null,
+        invoiceTotal: parsedInvoice.totals.totalPayable,
+        ...(shouldApplyDiscount
+          ? { discountPercentage: discountPct, adminFeePercentage: adminFeeInput }
+          : {}),
+      });
+      data.order = { ...data.order, ...updated };
 
       await Promise.all(tasks);
       invoiceResult = null;
@@ -616,15 +654,8 @@
       {#if recon.discount && isOrganiser && !isReadOnly}
         <article class="discount-admin" data-testid="discount-admin">
           <p>
-            <strong>{recon.discount.discountPercentage}% wholesale discount</strong> applied ({formatPrice(
-              recon.discount.discountAmount,
-            )}). Members see
-            <strong
-              >{recon.discount.memberDiscountPercentage.toFixed(
-                recon.discount.memberDiscountPercentage % 1 === 0 ? 0 : 1,
-              )}%</strong
-            >
-            off each line; Ltd retains {formatPrice(recon.discount.adminFeeAmount)} for admin.
+            <strong>{recon.discount.discountPercentage}% wholesale discount</strong> applied, with
+            <strong>{formatPercent(recon.discount.adminFeePercentage)}</strong> kept by the Ltd for admin.
           </p>
           <div class="discount-admin__controls">
             {#if adminFeeEdit === null}
@@ -671,83 +702,76 @@
       {/if}
 
       <figure>
-        <table>
+        <table data-testid="order-totals">
           <thead>
             <tr>
               <th>Member</th>
-              <th>Net</th>
-              <th>VAT</th>
-              <th>Gross</th>
+              <th class="amount">To pay</th>
             </tr>
           </thead>
           <tbody>
             {#each recon.memberSummaries as summary (summary.memberId)}
               <tr>
                 <td>{summary.memberName ?? summary.memberInitials ?? 'Unknown'}</td>
-                <td>{formatPrice(summary.totals.net)}</td>
-                <td>{formatPrice(summary.totals.vat)}</td>
-                <td>{formatPrice(summary.totals.gross)}</td>
+                <td class="amount">{formatPrice(summary.totals.gross)}</td>
               </tr>
             {/each}
           </tbody>
           <tfoot>
-            {#if recon.discount}
-              <tr>
-                <td><strong>Subtotal</strong></td>
-                <td><strong>{formatPrice(recon.discount.subtotalBeforeDiscount)}</strong></td>
-                <td></td>
-                <td></td>
-              </tr>
-              <tr class="discount-row">
-                <td><em>{recon.discount.discountPercentage}% discount</em></td>
-                <td>−{formatPrice(recon.discount.discountAmount)}</td>
-                <td></td>
-                <td></td>
-              </tr>
-              <tr class="discount-row discount-row--indent">
+            {#if invoiceTotal !== null}
+              <tr class="breakdown-row">
                 <td>
-                  <small>{recon.discount.adminFeePercentage}% admin (retained by Ltd)</small>
+                  Infinity invoice{data.order.invoiceNumber ? ` ${data.order.invoiceNumber}` : ''}
+                  {#if recon.discount}
+                    <small>(after their {recon.discount.discountPercentage}% discount)</small>
+                  {/if}
                 </td>
-                <td><small>{formatPrice(recon.discount.adminFeeAmount)}</small></td>
-                <td></td>
-                <td></td>
+                <td class="amount">{formatPrice(invoiceTotal)}</td>
               </tr>
-              <tr class="discount-row discount-row--indent">
-                <td>
-                  <small>
-                    {recon.discount.memberDiscountPercentage.toFixed(
-                      recon.discount.memberDiscountPercentage % 1 === 0 ? 0 : 1,
-                    )}% to members
-                  </small>
-                </td>
-                <td><small>−{formatPrice(recon.discount.memberDiscountAmount)}</small></td>
-                <td></td>
-                <td></td>
-              </tr>
-              <tr>
-                <td><strong>Nett goods value</strong></td>
-                <td><strong>{formatPrice(recon.orderTotals.net)}</strong></td>
-                <td><strong>{formatPrice(recon.orderTotals.vat)}</strong></td>
-                <td><strong>{formatPrice(recon.orderTotals.gross)}</strong></td>
-              </tr>
-            {:else}
-              <tr>
-                <td><strong>Total</strong></td>
-                <td><strong>{formatPrice(recon.orderTotals.net)}</strong></td>
-                <td><strong>{formatPrice(recon.orderTotals.vat)}</strong></td>
-                <td><strong>{formatPrice(recon.orderTotals.gross)}</strong></td>
-              </tr>
+              {#if recon.discount}
+                <tr class="breakdown-row">
+                  <td>Kept by the Ltd for admin</td>
+                  <td class="amount">{formatSigned(keptByLtd)}</td>
+                </tr>
+              {:else if invoiceMatches && keptByLtd !== 0}
+                <tr class="breakdown-row">
+                  <td>Rounding difference</td>
+                  <td class="amount">{formatSigned(keptByLtd)}</td>
+                </tr>
+              {/if}
+              {#if !invoiceMatches}
+                <tr class="breakdown-row breakdown-row--mismatch" data-testid="invoice-mismatch">
+                  <td>Doesn't match the invoice</td>
+                  <td class="amount">{formatSigned(unexplained)}</td>
+                </tr>
+              {/if}
             {/if}
-            {#if parsedInvoice}
-              <tr>
-                <td><em>Invoice {parsedInvoice.invoiceNumber}</em></td>
-                <td>{formatPrice(parsedInvoice.totals.nettGoodsValue)}</td>
-                <td>{formatPrice(parsedInvoice.totals.vat)}</td>
-                <td>{formatPrice(parsedInvoice.totals.totalPayable)}</td>
-              </tr>
-            {/if}
+            <tr>
+              <td><strong>Members pay in total</strong></td>
+              <td class="amount"><strong>{formatPrice(membersTotal)}</strong></td>
+            </tr>
           </tfoot>
         </table>
+        {#if recon.discount || !invoiceMatches}
+          <figcaption>
+            {#if recon.discount}
+              <small>
+                Infinity gave the co-op {recon.discount.discountPercentage}% off. Everyone gets
+                {formatPercent(recon.discount.memberDiscountPercentage)} off each of their lines ({formatPrice(
+                  memberSaving,
+                )} across the order), and the Ltd keeps the rest ({invoiceTotal === null
+                  ? 'about '
+                  : ''}{formatPrice(keptByLtd)}) for admin. Prices include VAT.
+              </small>
+            {/if}
+            {#if invoiceTotal !== null && !invoiceMatches}
+              <small class="mismatch-note">
+                What members pay doesn't add up to the invoice. Check for invoice lines that aren't
+                in this order, or prices that changed, before asking members to pay.
+              </small>
+            {/if}
+          </figcaption>
+        {/if}
       </figure>
 
       <p>
@@ -850,12 +874,22 @@
     margin: 0;
   }
 
-  .discount-row td {
-    border-top: 0;
-    color: var(--text-muted);
+  td.amount,
+  th.amount {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
   }
 
-  .discount-row--indent td:first-child {
-    padding-left: 2rem;
+  .breakdown-row td {
+    color: var(--text-secondary);
+  }
+
+  .breakdown-row--mismatch td,
+  .mismatch-note {
+    color: var(--status-reconciling);
+  }
+
+  .mismatch-note {
+    display: block;
   }
 </style>

@@ -221,6 +221,8 @@ app.put('/:id', async (c) => {
   if (validated.adminFeePercentage !== undefined) {
     updateFields.adminFeePercentage = validated.adminFeePercentage;
   }
+  if (validated.invoiceNumber !== undefined) updateFields.invoiceNumber = validated.invoiceNumber;
+  if (validated.invoiceTotal !== undefined) updateFields.invoiceTotal = validated.invoiceTotal;
 
   await db.update(orders).set(updateFields).where(eq(orders.id, orderId));
 

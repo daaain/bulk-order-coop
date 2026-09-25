@@ -80,9 +80,9 @@ test.describe('Invoice-driven reconciliation', () => {
     await expect(matchedCount).toHaveText('3 matched');
     await expect(page.getByTestId('invoice-missing')).toHaveText('0 missing');
 
-    // While the invoice is parsed (pre-apply), the invoice-result panel and the
-    // order-totals tfoot both reference the invoice number — confirms the PDF
-    // was parsed correctly and matched against the order.
+    // While the invoice is parsed (pre-apply), the invoice-result panel
+    // references the invoice number — confirms the PDF was parsed correctly
+    // and matched against the order.
     await expect(page.getByText('Invoice 677901').first()).toBeVisible();
 
     // 8. Apply the invoice
@@ -101,6 +101,14 @@ test.describe('Invoice-driven reconciliation', () => {
     const allocateBtn = page.locator('button:has-text("Generate allocations")');
     await expect(allocateBtn).toBeVisible({ timeout: 15000 });
     await allocateBtn.click();
+
+    // The totals trace what members pay back to the applied invoice.
+    const totals = page.getByTestId('order-totals');
+    await expect(totals).toContainText('Infinity invoice 677901', { timeout: 15000 });
+    await expect(totals).toContainText('Members pay in total');
+    // The fixture invoice carries lines this order never had, so the totals
+    // must flag the gap rather than count it as admin.
+    await expect(page.getByTestId('invoice-mismatch')).toBeVisible();
 
     // 10. Move to delivery phase
     await page.click('a:has-text("Delivery")');
