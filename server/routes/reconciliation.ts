@@ -53,6 +53,12 @@ app.put('/:id/items/:itemId/delivery', async (c) => {
     return c.json({ error: 'You are not a member of this order' }, 403);
   }
 
+  // Delivery status drives allocations (and which lines members may rebalance),
+  // so only organisers record it.
+  if (membership.role !== 'organiser') {
+    return c.json({ error: 'Only organisers can update delivery status' }, 403);
+  }
+
   // Check order is reconciling
   const [order] = await db
     .select({ status: orders.status })

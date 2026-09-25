@@ -140,6 +140,23 @@ describe('Reconciliation API', () => {
       expect(body.delivery.actualQuantity).toBe(3);
     });
 
+    it('rejects members who are not organisers', async () => {
+      const { member, orderId, itemId } = await setupReconcilingOrder({ secondMember: true });
+
+      const res = await authFetch(
+        `/orders/${orderId}/items/${itemId}/delivery`,
+        member!.id,
+        'member@test.local',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'missing' }),
+        },
+      );
+
+      expect(res.status).toBe(403);
+    });
+
     it('rejects when order is not reconciling', async () => {
       const organiser = await seedMember('organiser@test.local', 'Organiser', 'ORG');
       const { catalogueKey } = await seedCatalogue();

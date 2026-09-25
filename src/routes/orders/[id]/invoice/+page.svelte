@@ -46,7 +46,8 @@
     data.order.members.some((m) => m.memberId === auth.user?.id && m.role === 'organiser'),
   );
 
-  const isReadOnly = $derived(data.order.status === 'complete');
+  // Only organisers record delivery status; members see the table read-only.
+  const isReadOnly = $derived(data.order.status === 'complete' || !isOrganiser);
 
   // The server only accepts delivery updates and allocations while the order is
   // reconciling. Earlier than that, organisers can still preview an invoice but
@@ -180,12 +181,13 @@
         await updateOrder(data.orderId, { status: 'closed' });
       }
       await updateOrder(data.orderId, { status: 'reconciling' });
-      // Reload the layout data so the status badge and every gate on this page
-      // pick up the new status.
-      await invalidateAll();
     } catch (err: unknown) {
       statusError = (err as Error).message || 'Failed to start reconciliation';
     } finally {
+      // Reload the layout data so the status badge and every gate on this page
+      // pick up the new status — also after a failure, since closing may have
+      // succeeded and a retry must then go straight to reconciling.
+      await invalidateAll();
       startingReconciliation = false;
     }
   }
