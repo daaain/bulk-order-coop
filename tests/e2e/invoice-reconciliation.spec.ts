@@ -66,9 +66,7 @@ test.describe('Invoice-driven reconciliation', () => {
     await page.waitForURL(/\/invoice/);
 
     // Wait for the page to be ready
-    await expect(page.locator('input#invoice-pdf')).toBeVisible({
-      timeout: 15000,
-    });
+    await expect(page.locator('input#invoice-pdf')).toBeVisible({ timeout: 15000 });
 
     // 6. Upload the invoice PDF
     await page.setInputFiles(
@@ -123,5 +121,29 @@ test.describe('Invoice-driven reconciliation', () => {
     await markCompleteBtn.click();
     await page.click('button:has-text("Yes")');
     await expect(page.getByText('complete').first()).toBeVisible({ timeout: 15000 });
+  });
+
+  test('offers to start reconciliation from the invoice page when the order is open', async ({
+    page,
+  }) => {
+    await page.goto('/orders/new');
+    await page.fill('input[placeholder="e.g. January 2026 Order"]', 'Invoice Early Order');
+    await page.setInputFiles('input[type="file"]', path.resolve('tests/fixtures/invcat2.csv'));
+    await page.click('button:has-text("Create order")');
+    await page.waitForURL(/\/orders\/[a-zA-Z0-9_-]+$/);
+
+    await page.click('a:has-text("Invoice")');
+    await page.waitForURL(/\/invoice/);
+
+    const notice = page.getByTestId('start-reconciliation');
+    await expect(notice).toBeVisible({ timeout: 15000 });
+    await expect(notice).toContainText('This order is still open');
+    await expect(page.locator('button:has-text("Mark all as arrived")')).toHaveCount(0);
+
+    await notice.locator('button:has-text("Close order and start reconciliation")').click();
+    await notice.locator('button:has-text("Yes")').click();
+
+    await expect(notice).toHaveCount(0, { timeout: 15000 });
+    await expect(page.locator('button:has-text("Mark all as arrived")')).toBeVisible();
   });
 });

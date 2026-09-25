@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import { invalidateAll } from '$app/navigation';
   import type { LayoutData } from '../$types';
   import { useAuth } from '$lib/auth.svelte';
   import { formatClaimAmount, formatPrice, formatCaseSize } from '$lib/format';
@@ -10,6 +11,7 @@
     generateAllocations,
   } from '$lib/reconciliation';
   import { loadInvoiceFromFile } from '$lib/invoice-loader';
+  import ConfirmButton from '$lib/components/ConfirmButton.svelte';
   import { matchInvoiceToOrder } from '$shared/invoice-matching';
   import type {
     InvoiceMatchResult,
@@ -17,11 +19,7 @@
     OrderItemForMatching,
   } from '$shared/invoice-matching';
   import type { ParsedInvoice } from '$shared/invoice';
-  import type {
-    ReconciliationSummary,
-    ReconciliationItem,
-    DeliveryStatus,
-  } from '$shared/types';
+  import type { ReconciliationSummary, ReconciliationItem, DeliveryStatus } from '$shared/types';
 
   let { data }: { data: LayoutData } = $props();
 
@@ -49,6 +47,15 @@
   );
 
   const isReadOnly = $derived(data.order.status === 'complete');
+
+  // The server only accepts delivery updates and allocations while the order is
+  // reconciling. Earlier than that, organisers can still preview an invoice but
+  // must advance the status before anything is recorded.
+  const awaitingReconciliation = $derived(
+    data.order.status === 'open' || data.order.status === 'closed',
+  );
+  let startingReconciliation = $state(false);
+  let statusError = $state('');
 
   const hasAllocations = $derived(recon !== null && recon.memberSummaries.length > 0);
 
@@ -161,6 +168,25 @@
     } finally {
       parsingInvoice = false;
       input.value = '';
+    }
+  }
+
+  async function startReconciliation() {
+    startingReconciliation = true;
+    statusError = '';
+    try {
+      // Status transitions are one step at a time: open → closed → reconciling.
+      if (data.order.status === 'open') {
+        await updateOrder(data.orderId, { status: 'closed' });
+      }
+      await updateOrder(data.orderId, { status: 'reconciling' });
+      // Reload the layout data so the status badge and every gate on this page
+      // pick up the new status.
+      await invalidateAll();
+    } catch (err: unknown) {
+      statusError = (err as Error).message || 'Failed to start reconciliation';
+    } finally {
+      startingReconciliation = false;
     }
   }
 
@@ -296,6 +322,42 @@
         <p>Auto-populates the items table from the supplier's PDF invoice.</p>
       </hgroup>
 
+      {#if awaitingReconciliation}
+        <article class="status-notice" data-testid="start-reconciliation">
+          <p>
+            <strong>
+              This order is still {data.order.status === 'open' ? 'open' : 'closed'}.
+            </strong>
+            You can preview an invoice now, but it can only be applied once reconciliation has started.
+          </p>
+          <p>Starting reconciliation will:</p>
+          <ul>
+            {#if data.order.status === 'open'}
+              <li>
+                Close the order — members will no longer be able to add, change or remove their
+                claims, and no new items can be added from the catalogue. Organisers can still
+                adjust claims.
+              </li>
+            {/if}
+            <li>
+              Move the order into reconciliation. Once an invoice is applied, members can no longer
+              swap items on the Submission page.
+            </li>
+            <li>This can't be undone — orders can't be moved back to an earlier status.</li>
+          </ul>
+          {#if statusError}
+            <p><mark>{statusError}</mark></p>
+          {/if}
+          <ConfirmButton
+            label={data.order.status === 'open'
+              ? 'Close order and start reconciliation'
+              : 'Start reconciliation'}
+            onclick={startReconciliation}
+            disabled={startingReconciliation}
+          />
+        </article>
+      {/if}
+
       <div class="invoice-upload">
         <label for="invoice-pdf"><strong>Upload invoice PDF</strong></label>
         <input
@@ -366,9 +428,16 @@
             </div>
           {/if}
 
-          <button onclick={applyInvoice} disabled={applyingInvoice} aria-busy={applyingInvoice}>
+          <button
+            onclick={applyInvoice}
+            disabled={applyingInvoice || awaitingReconciliation}
+            aria-busy={applyingInvoice}
+          >
             Apply invoice
           </button>
+          {#if awaitingReconciliation}
+            <small>Start reconciliation above to apply this invoice.</small>
+          {/if}
         </article>
       {/if}
     </section>
@@ -382,7 +451,7 @@
       </p>
     </hgroup>
 
-    {#if !isReadOnly && isOrganiser}
+    {#if !isReadOnly && isOrganiser && !awaitingReconciliation}
       <div class="action-bar">
         <button
           class="outline"
@@ -392,7 +461,8 @@
         >
           Mark all as arrived
         </button>
-        <small>Use this if you trust Infinity to send everything as ordered (no PDF invoice).</small>
+        <small>Use this if you trust Infinity to send everything as ordered (no PDF invoice).</small
+        >
       </div>
     {/if}
 
@@ -430,7 +500,7 @@
                 )}
               </td>
               <td>
-                {#if isReadOnly}
+                {#if isReadOnly || awaitingReconciliation}
                   {item.delivery?.status ?? '–'}
                 {:else}
                   <select
@@ -486,7 +556,7 @@
                 {/if}
               </td>
               <td>
-                {#if isReadOnly}
+                {#if isReadOnly || awaitingReconciliation}
                   {item.delivery?.notes ?? ''}
                 {:else}
                   <input
@@ -514,7 +584,7 @@
     {/if}
   </section>
 
-  {#if !isReadOnly && isOrganiser && allDeliverySet && !hasAllocations}
+  {#if !isReadOnly && !awaitingReconciliation && isOrganiser && allDeliverySet && !hasAllocations}
     <section>
       <button onclick={handleGenerateAllocations} disabled={allocating} aria-busy={allocating}>
         Generate allocations
@@ -543,8 +613,10 @@
       {#if recon.discount && isOrganiser && !isReadOnly}
         <article class="discount-admin" data-testid="discount-admin">
           <p>
-            <strong>{recon.discount.discountPercentage}% wholesale discount</strong> applied
-            ({formatPrice(recon.discount.discountAmount)}). Members see <strong
+            <strong>{recon.discount.discountPercentage}% wholesale discount</strong> applied ({formatPrice(
+              recon.discount.discountAmount,
+            )}). Members see
+            <strong
               >{recon.discount.memberDiscountPercentage.toFixed(
                 recon.discount.memberDiscountPercentage % 1 === 0 ? 0 : 1,
               )}%</strong
@@ -717,6 +789,15 @@
 
   .invoice-upload input[type='file'] {
     margin-bottom: 0.5rem;
+  }
+
+  .status-notice {
+    margin-top: 1rem;
+    padding: 1rem;
+  }
+
+  .status-notice ul {
+    margin-bottom: 1rem;
   }
 
   .invoice-result {
