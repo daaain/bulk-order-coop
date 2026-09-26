@@ -93,6 +93,22 @@ describe('validateUpdateOrder', () => {
     const result = validateUpdateOrder({ adminFeePercentage: 'two' });
     expect(result).toHaveProperty('error');
   });
+
+  it('accepts invoice number and total, trimming the number', () => {
+    const result = validateUpdateOrder({ invoiceNumber: ' 708091 ', invoiceTotal: 1995.56 });
+    expect(result).toEqual({ invoiceNumber: '708091', invoiceTotal: 1995.56 });
+  });
+
+  it('accepts null to clear invoice fields', () => {
+    const result = validateUpdateOrder({ invoiceNumber: null, invoiceTotal: null });
+    expect(result).toEqual({ invoiceNumber: null, invoiceTotal: null });
+  });
+
+  it('rejects a blank invoice number or a negative invoice total', () => {
+    expect(validateUpdateOrder({ invoiceNumber: '  ' })).toHaveProperty('error');
+    expect(validateUpdateOrder({ invoiceTotal: -1 })).toHaveProperty('error');
+    expect(validateUpdateOrder({ invoiceTotal: '1995.56' })).toHaveProperty('error');
+  });
 });
 
 describe('isValidStatusTransition', () => {

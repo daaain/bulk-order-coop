@@ -40,6 +40,10 @@ export const orders = sqliteTable('orders', {
   // invoice discount (discountPercentage - adminFeePercentage) is passed
   // through to members on their allocations. Null = use default of 2.
   adminFeePercentage: real('admin_fee_percentage'),
+  // The supplier invoice applied to this order, kept so the totals can be
+  // traced back from what the Ltd actually pays. Null until applied.
+  invoiceNumber: text('invoice_number'),
+  invoiceTotal: real('invoice_total'),
 });
 
 // ── order_members ── who's part of an order ──────────────────────────────────

@@ -25,6 +25,8 @@ export async function updateOrder(
     status?: string;
     discountPercentage?: number | null;
     adminFeePercentage?: number | null;
+    invoiceNumber?: string | null;
+    invoiceTotal?: number | null;
   },
 ): Promise<Order> {
   return apiFetch<Order>(`/orders/${id}`, { method: 'PUT', body: JSON.stringify(data) });

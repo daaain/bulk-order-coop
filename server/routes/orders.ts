@@ -5,6 +5,7 @@ import { nanoid } from 'nanoid';
 import type { Bindings } from '../index';
 import type { JwtPayload } from '../services/jwt';
 import { requireAuth } from '../middleware/auth';
+import { orderHasAllocations, recalculateAllocations } from '../services/allocations';
 import { orders, orderMembers, members } from '../../db/schema';
 import {
   validateCreateOrder,
@@ -221,8 +222,17 @@ app.put('/:id', async (c) => {
   if (validated.adminFeePercentage !== undefined) {
     updateFields.adminFeePercentage = validated.adminFeePercentage;
   }
+  if (validated.invoiceNumber !== undefined) updateFields.invoiceNumber = validated.invoiceNumber;
+  if (validated.invoiceTotal !== undefined) updateFields.invoiceTotal = validated.invoiceTotal;
 
   await db.update(orders).set(updateFields).where(eq(orders.id, orderId));
+
+  // Allocation prices carry the member discount, so reprice them when it moves.
+  const discountChanged =
+    validated.discountPercentage !== undefined || validated.adminFeePercentage !== undefined;
+  if (discountChanged && (await orderHasAllocations(db, orderId))) {
+    await recalculateAllocations(db, orderId);
+  }
 
   const [updatedOrder] = await db.select().from(orders).where(eq(orders.id, orderId));
 

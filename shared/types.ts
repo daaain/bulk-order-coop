@@ -26,6 +26,8 @@ export interface Order {
   createdAt: number;
   discountPercentage: number | null;
   adminFeePercentage: number | null;
+  invoiceNumber: string | null;
+  invoiceTotal: number | null;
 }
 
 /**

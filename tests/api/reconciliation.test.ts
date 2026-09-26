@@ -376,6 +376,38 @@ describe('Reconciliation API', () => {
       expect(body.count).toBeGreaterThan(0);
     });
 
+    it('reprices existing allocations when the order discount changes', async () => {
+      const { organiser, orderId, itemId } = await setupReconcilingOrder();
+      const put = (path: string, body: object) =>
+        authFetch(path, organiser.id, 'organiser@test.local', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      const allocationPrice = async () => {
+        const res = await authFetch(
+          `/orders/${orderId}/reconciliation`,
+          organiser.id,
+          'organiser@test.local',
+        );
+        const body = (await res.json()) as { items: { allocations: { price: number }[] }[] };
+        return body.items[0].allocations[0].price;
+      };
+
+      await put(`/orders/${orderId}/items/${itemId}/delivery`, { status: 'arrived' });
+      await authFetch(`/orders/${orderId}/allocate`, organiser.id, 'organiser@test.local', {
+        method: 'POST',
+      });
+      const fullPrice = await allocationPrice();
+
+      // 6% discount with 2% admin → members get 4% off.
+      await put(`/orders/${orderId}`, { discountPercentage: 6, adminFeePercentage: 2 });
+      expect(await allocationPrice()).toBeCloseTo(fullPrice * 0.96, 2);
+
+      await put(`/orders/${orderId}`, { discountPercentage: null });
+      expect(await allocationPrice()).toBeCloseTo(fullPrice, 2);
+    });
+
     it('rejects when delivery status is missing', async () => {
       const { organiser, orderId } = await setupReconcilingOrder();
 
