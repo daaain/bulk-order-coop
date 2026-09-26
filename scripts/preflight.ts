@@ -12,6 +12,10 @@ import { getTableConfig, SQLiteTable } from 'drizzle-orm/sqlite-core';
 export interface TablePrint {
   rows: number;
   columns: Record<string, string[]>;
+  /** Primary-key columns in key order, or null for a table without one. */
+  primaryKey: string[] | null;
+  /** Each row's key tuple as JSON, or null when the key columns can't be read. */
+  keys: string[] | null;
 }
 export type Fingerprint = Record<string, TablePrint>;
 
@@ -54,6 +58,15 @@ function removedValues(before: string[], after: string[]): number {
   return removed;
 }
 
+/** A few missing keys, e.g. `(order_id=o1, member_id=m2)`, for the diagnosis. */
+function describeKeys(columns: string[], keys: string[], limit = 3): string {
+  const shown = keys.slice(0, limit).map((key) => {
+    const values = JSON.parse(key) as unknown[];
+    return `(${columns.map((c, i) => `${c}=${String(values[i])}`).join(', ')})`;
+  });
+  return shown.join(', ') + (keys.length > limit ? `, and ${keys.length - limit} more` : '');
+}
+
 const nonNull = (values: string[]) => values.filter((v) => v !== 'null').length;
 
 export function compareData(
@@ -79,8 +92,25 @@ export function compareData(
     }
     // Values that went with deleted rows are reported once, as lost rows.
     const rowsLost = Math.max(0, was.rows - now.rows);
-    if (rowsLost > 0) {
-      lose(`Table ${table} lost ${rowsLost} of its ${was.rows} row(s)`, table);
+    if (was.keys && now.keys) {
+      // Keyed: catches a row deleted and another inserted, which counts miss.
+      const remaining = new Set(now.keys);
+      const missing = was.keys.filter((k) => !remaining.has(k));
+      if (missing.length > 0) {
+        lose(
+          `Table ${table} lost ${missing.length} of its ${was.rows} row(s), e.g. ${describeKeys(was.primaryKey!, missing)}`,
+          table,
+        );
+      }
+    } else {
+      if (rowsLost > 0) lose(`Table ${table} lost ${rowsLost} of its ${was.rows} row(s)`, table);
+      if (was.rows > 0) {
+        notes.push(
+          was.primaryKey
+            ? `Table ${table}: its primary key (${was.primaryKey.join(', ')}) no longer exists, so only row counts were compared`
+            : `Table ${table} has no primary key, so only row counts were compared`,
+        );
+      }
     }
     for (const [column, values] of Object.entries(was.columns)) {
       const current = now.columns[column];

@@ -101,7 +101,12 @@ function sqliteFile(persistDir: string): string {
 
 const INTERNAL = /^(sqlite_|_cf_|d1_migrations$)/;
 
-function fingerprint(file: string): Fingerprint {
+/**
+ * Read every table. `keyColumns` fixes which columns identify a row (the
+ * key from before the migration), so a changed key is still checked against
+ * the old one; without it, each table's own primary key is used.
+ */
+function fingerprint(file: string, keyColumns?: Record<string, string[] | null>): Fingerprint {
   const db = new Database(file);
   try {
     const tables = db.query("SELECT name FROM sqlite_master WHERE type = 'table'").all() as {
@@ -111,14 +116,26 @@ function fingerprint(file: string): Fingerprint {
     for (const { name } of tables) {
       if (INTERNAL.test(name)) continue;
       const rows = db.query(`SELECT * FROM "${name}"`).all() as Record<string, unknown>[];
-      const columns = (db.query(`PRAGMA table_info("${name}")`).all() as { name: string }[]).map(
-        (c) => c.name,
-      );
+      const info = db.query(`PRAGMA table_info("${name}")`).all() as { name: string; pk: number }[];
+      const columns = info.map((c) => c.name);
+      // `pk` is the column's position in the primary key (0 if not part of it).
+      const ownKey = info
+        .filter((c) => c.pk > 0)
+        .sort((a, b) => a.pk - b.pk)
+        .map((c) => c.name);
+      const primaryKey =
+        keyColumns && name in keyColumns ? keyColumns[name] : ownKey.length ? ownKey : null;
+      const keyReadable = primaryKey !== null && primaryKey.every((c) => columns.includes(c));
       print[name] = {
         rows: rows.length,
         columns: Object.fromEntries(
           columns.map((c) => [c, rows.map((r) => JSON.stringify(r[c] ?? null)).sort()]),
         ),
+        primaryKey,
+        keys:
+          keyReadable && primaryKey
+            ? rows.map((r) => JSON.stringify(primaryKey.map((c) => r[c] ?? null)))
+            : null,
       };
     }
     return print;
@@ -236,7 +253,10 @@ async function main() {
       );
     } else {
       // 3. Check the result.
-      const after = fingerprint(file);
+      const after = fingerprint(
+        file,
+        Object.fromEntries(Object.entries(before).map(([t, p]) => [t, p.primaryKey])),
+      );
       const data = compareData(before, after, allowedLosses(pending.map((m) => m.sql)));
       problems.push(...data.problems, ...integrityProblems(file));
       notes.push(...data.notes);
