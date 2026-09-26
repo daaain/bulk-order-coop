@@ -236,27 +236,32 @@
       const discountPct = parsedInvoice.totals.discountPercentage;
       const shouldApplyDiscount = applyDiscountChecked && discountPct > 0;
 
-      const tasks: Promise<unknown>[] = updates.map((u) =>
-        updateDeliveryStatus(data.orderId, u.orderItemId, {
-          status: u.status,
-          actualQuantity: u.actualQuantity,
-          actualPrice: u.actualPrice,
-          notes: u.notes,
-        }),
+      // Record deliveries first and only then store the invoice, so a failed
+      // delivery update never leaves an invoice saved against stale delivery
+      // state. Both steps are idempotent, so applying again recovers.
+      await Promise.all(
+        updates.map((u) =>
+          updateDeliveryStatus(data.orderId, u.orderItemId, {
+            status: u.status,
+            actualQuantity: u.actualQuantity,
+            actualPrice: u.actualPrice,
+            notes: u.notes,
+          }),
+        ),
       );
 
       // Keep the invoice total so the order totals can be traced back to what
-      // the Ltd actually pays the supplier.
+      // the Ltd actually pays the supplier. A discount from an earlier invoice
+      // mustn't carry over, so it's cleared when this one isn't applied.
       const updated = await updateOrder(data.orderId, {
         invoiceNumber: parsedInvoice.invoiceNumber || null,
         invoiceTotal: parsedInvoice.totals.totalPayable,
         ...(shouldApplyDiscount
           ? { discountPercentage: discountPct, adminFeePercentage: adminFeeInput }
-          : {}),
+          : { discountPercentage: null }),
       });
       data.order = { ...data.order, ...updated };
 
-      await Promise.all(tasks);
       invoiceResult = null;
       parsedInvoice = null;
       await loadReconciliation();
