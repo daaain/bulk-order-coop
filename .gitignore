@@ -28,3 +28,4 @@ tests/e2e/.auth/
 playwright-report/
 test-results/
 CLAUDE.md
+db/.live-schema-*.ts

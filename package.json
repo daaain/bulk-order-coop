@@ -25,7 +25,8 @@
     "format:check": "oxfmt --check . && prettier --check \"**/*.svelte\"",
     "lint": "oxlint . --ignore-path .gitignore && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "wrangler d1 migrations apply DB --local"
+    "db:migrate": "wrangler d1 migrations apply DB --local",
+    "db:check": "bun scripts/migrate.ts --check"
   },
   "dependencies": {
     "@picocss/pico": "^2.1.1",

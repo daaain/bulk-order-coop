@@ -97,9 +97,11 @@ Or set up CI — see [DEVELOPMENT.md](DEVELOPMENT.md) for the GitHub Actions wor
 
 ### Updating the database schema
 
-D1 migrations are applied manually (too risky to automate in CI):
-
 ```bash
 bun run db:generate    # Generate migration from schema changes
-bunx wrangler d1 migrations apply DB --remote
 ```
+
+With the GitHub Actions deploy, pending migrations are rehearsed on a copy of
+production and applied automatically if nothing is lost or broken; otherwise
+the deploy stops with a diagnosis — see [DEVELOPMENT.md](DEVELOPMENT.md). Without CI,
+apply them yourself with `bunx wrangler d1 migrations apply DB --remote`.

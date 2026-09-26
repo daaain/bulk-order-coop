@@ -24,6 +24,9 @@
 ├── db/
 │   ├── schema.ts              # Drizzle ORM schema (10 tables)
 │   └── migrations/            # Generated D1 migrations
+├── scripts/
+│   ├── migrate.ts             # Deploy step: rehearses, then applies D1 migrations
+│   └── preflight.ts           # Checks run on the rehearsal
 ├── functions/
 │   └── api/[[route]].ts       # Cloudflare Pages catch-all → Hono
 ├── server/
@@ -88,16 +91,17 @@ JWT_SECRET=some-local-secret
 
 ## Scripts
 
-| Command               | What it does                              |
-| --------------------- | ----------------------------------------- |
-| `bun run dev`         | Start SvelteKit + Wrangler concurrently   |
-| `bun run build`       | Build static SPA to `build/`              |
-| `bun run test`        | Run all tests (Vitest)                    |
-| `bun run test:watch`  | Run tests in watch mode                   |
-| `bun run lint`        | Lint with oxlint                          |
-| `bun run check`       | Svelte type checking                      |
-| `bun run db:generate` | Generate D1 migration from schema changes |
-| `bun run db:migrate`  | Apply migrations to local D1              |
+| Command               | What it does                                                       |
+| --------------------- | ------------------------------------------------------------------ |
+| `bun run dev`         | Start SvelteKit + Wrangler concurrently                            |
+| `bun run build`       | Build static SPA to `build/`                                       |
+| `bun run test`        | Run all tests (Vitest)                                             |
+| `bun run test:watch`  | Run tests in watch mode                                            |
+| `bun run lint`        | Lint with oxlint                                                   |
+| `bun run check`       | Svelte type checking                                               |
+| `bun run db:generate` | Generate D1 migration from schema changes                          |
+| `bun run db:migrate`  | Apply migrations to local D1                                       |
+| `bun run db:check`    | Rehearse pending migrations on a copy of production, apply nothing |
 
 ## Testing
 
@@ -128,9 +132,32 @@ To modify the schema:
 bun run db:generate
 # 3. Apply locally
 bun run db:migrate
-# 4. Apply to production (manual — not automated in CI)
-bunx wrangler d1 migrations apply DB --remote
+# 4. Commit it: the deploy applies it to production if it's safe
 ```
+
+The deploy job runs `scripts/migrate.ts` before publishing. It copies the
+production database onto the CI runner, applies the pending migrations to the
+copy, and compares the two. The deploy stops, with nothing applied to
+production, if the rehearsal:
+
+- fails outright (a constraint or SQL error);
+- loses rows, drops a table or column that held data, or empties values;
+- breaks SQLite's integrity or foreign-key checks;
+- leaves out a table or column that the new code uses; or
+- removes something the code serving traffic right now still uses. The script
+  looks up the live commit from Cloudflare Pages and reads its `db/schema.ts`;
+  if it can't, it assumes the live code uses everything. The fix is to ship
+  the code change first and the migration in a later deploy.
+
+Values that change without being lost (an `UPDATE` doing its job) are listed
+in the log but don't stop the deploy. If a migration is meant to lose data,
+name it in the file with `-- deploy: allow-loss orders.invoice_total` (or a
+bare table name); anything it doesn't name still stops the deploy.
+
+`bun run db:check` runs the rehearsal against production without applying
+anything, and `bun scripts/migrate.ts --local --check` runs it against your
+local dev database. D1 Time Travel keeps 30 days of history, and the deploy log
+records the bookmark from just before migrating.
 
 ## Key patterns
 
@@ -169,4 +196,4 @@ Set these in the Cloudflare dashboard (Workers & Pages → your project → Sett
 
 See the [Self-hosting section in README.md](README.md#self-hosting) for full setup instructions (creating the Pages project, D1 database, R2 bucket, and secrets).
 
-D1 migrations are applied manually — they're too risky to automate in CI.
+Safe D1 migrations are applied by the deploy job; see [Database](#database) for which ones need a manual step.
