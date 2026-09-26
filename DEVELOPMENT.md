@@ -24,6 +24,8 @@
 ├── db/
 │   ├── schema.ts              # Drizzle ORM schema (10 tables)
 │   └── migrations/            # Generated D1 migrations
+├── scripts/
+│   └── migrate.ts             # Deploy step: applies safe D1 migrations
 ├── functions/
 │   └── api/[[route]].ts       # Cloudflare Pages catch-all → Hono
 ├── server/
@@ -88,16 +90,17 @@ JWT_SECRET=some-local-secret
 
 ## Scripts
 
-| Command               | What it does                              |
-| --------------------- | ----------------------------------------- |
-| `bun run dev`         | Start SvelteKit + Wrangler concurrently   |
-| `bun run build`       | Build static SPA to `build/`              |
-| `bun run test`        | Run all tests (Vitest)                    |
-| `bun run test:watch`  | Run tests in watch mode                   |
-| `bun run lint`        | Lint with oxlint                          |
-| `bun run check`       | Svelte type checking                      |
-| `bun run db:generate` | Generate D1 migration from schema changes |
-| `bun run db:migrate`  | Apply migrations to local D1              |
+| Command               | What it does                                                    |
+| --------------------- | --------------------------------------------------------------- |
+| `bun run dev`         | Start SvelteKit + Wrangler concurrently                         |
+| `bun run build`       | Build static SPA to `build/`                                    |
+| `bun run test`        | Run all tests (Vitest)                                          |
+| `bun run test:watch`  | Run tests in watch mode                                         |
+| `bun run lint`        | Lint with oxlint                                                |
+| `bun run check`       | Svelte type checking                                            |
+| `bun run db:generate` | Generate D1 migration from schema changes                       |
+| `bun run db:migrate`  | Apply migrations to local D1                                    |
+| `bun run db:check`    | Show which pending production migrations the deploy would apply |
 
 ## Testing
 
@@ -128,9 +131,21 @@ To modify the schema:
 bun run db:generate
 # 3. Apply locally
 bun run db:migrate
-# 4. Apply to production (manual — not automated in CI)
-bunx wrangler d1 migrations apply DB --remote
+# 4. Commit it: the deploy applies it to production if it's safe
 ```
+
+The deploy job runs `scripts/migrate.ts` before publishing. It applies pending
+migrations automatically when they only add things (tables, indexes, columns),
+or drop a table or column that holds no data in production. Anything else —
+`UPDATE`, `DELETE`, renames, or a Drizzle table rebuild (`__new_…`) — stops the
+deploy with nothing applied. Read the SQL, then either apply it by hand with
+`bunx wrangler d1 migrations apply DB --remote`, or add a `-- deploy: reviewed`
+line to the migration file and push again. `bun run db:check` shows what the
+deploy would do without applying anything.
+
+If the running code still reads something a migration removes, ship the code
+change first and the migration in a later deploy. D1 Time Travel keeps 30 days
+of history, and the deploy log records the bookmark from just before migrating.
 
 ## Key patterns
 
@@ -169,4 +184,4 @@ Set these in the Cloudflare dashboard (Workers & Pages → your project → Sett
 
 See the [Self-hosting section in README.md](README.md#self-hosting) for full setup instructions (creating the Pages project, D1 database, R2 bucket, and secrets).
 
-D1 migrations are applied manually — they're too risky to automate in CI.
+Safe D1 migrations are applied by the deploy job; see [Database](#database) for which ones need a manual step.
