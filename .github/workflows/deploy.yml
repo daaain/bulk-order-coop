@@ -64,6 +64,9 @@ jobs:
       deployments: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The migration rehearsal reads the live deployment's schema from git.
+          fetch-depth: 0
 
       - uses: actions/download-artifact@v4
         with:
@@ -76,9 +79,10 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      # Applies additive migrations before the new code goes live, and stops the
-      # deploy if one could change or lose data (see scripts/migration-safety.ts).
-      - name: Apply safe D1 migrations
+      # Rehearses pending migrations on a copy of production and applies them
+      # only if nothing is lost or broken (see scripts/migrate.ts). The copy
+      # stays on the runner and is deleted when the step ends.
+      - name: Rehearse and apply D1 migrations
         run: bun scripts/migrate.ts
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

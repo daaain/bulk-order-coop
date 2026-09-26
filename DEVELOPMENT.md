@@ -25,7 +25,8 @@
 │   ├── schema.ts              # Drizzle ORM schema (10 tables)
 │   └── migrations/            # Generated D1 migrations
 ├── scripts/
-│   └── migrate.ts             # Deploy step: applies safe D1 migrations
+│   ├── migrate.ts             # Deploy step: rehearses, then applies D1 migrations
+│   └── preflight.ts           # Checks run on the rehearsal
 ├── functions/
 │   └── api/[[route]].ts       # Cloudflare Pages catch-all → Hono
 ├── server/
@@ -90,17 +91,17 @@ JWT_SECRET=some-local-secret
 
 ## Scripts
 
-| Command               | What it does                                                    |
-| --------------------- | --------------------------------------------------------------- |
-| `bun run dev`         | Start SvelteKit + Wrangler concurrently                         |
-| `bun run build`       | Build static SPA to `build/`                                    |
-| `bun run test`        | Run all tests (Vitest)                                          |
-| `bun run test:watch`  | Run tests in watch mode                                         |
-| `bun run lint`        | Lint with oxlint                                                |
-| `bun run check`       | Svelte type checking                                            |
-| `bun run db:generate` | Generate D1 migration from schema changes                       |
-| `bun run db:migrate`  | Apply migrations to local D1                                    |
-| `bun run db:check`    | Show which pending production migrations the deploy would apply |
+| Command               | What it does                                                       |
+| --------------------- | ------------------------------------------------------------------ |
+| `bun run dev`         | Start SvelteKit + Wrangler concurrently                            |
+| `bun run build`       | Build static SPA to `build/`                                       |
+| `bun run test`        | Run all tests (Vitest)                                             |
+| `bun run test:watch`  | Run tests in watch mode                                            |
+| `bun run lint`        | Lint with oxlint                                                   |
+| `bun run check`       | Svelte type checking                                               |
+| `bun run db:generate` | Generate D1 migration from schema changes                          |
+| `bun run db:migrate`  | Apply migrations to local D1                                       |
+| `bun run db:check`    | Rehearse pending migrations on a copy of production, apply nothing |
 
 ## Testing
 
@@ -134,18 +135,29 @@ bun run db:migrate
 # 4. Commit it: the deploy applies it to production if it's safe
 ```
 
-The deploy job runs `scripts/migrate.ts` before publishing. It applies pending
-migrations automatically when they only add things (tables, indexes, columns),
-or drop a table or column that holds no data in production. Anything else —
-`UPDATE`, `DELETE`, renames, or a Drizzle table rebuild (`__new_…`) — stops the
-deploy with nothing applied. Read the SQL, then either apply it by hand with
-`bunx wrangler d1 migrations apply DB --remote`, or add a `-- deploy: reviewed`
-line to the migration file and push again. `bun run db:check` shows what the
-deploy would do without applying anything.
+The deploy job runs `scripts/migrate.ts` before publishing. It copies the
+production database onto the CI runner, applies the pending migrations to the
+copy, and compares the two. The deploy stops, with nothing applied to
+production, if the rehearsal:
 
-If the running code still reads something a migration removes, ship the code
-change first and the migration in a later deploy. D1 Time Travel keeps 30 days
-of history, and the deploy log records the bookmark from just before migrating.
+- fails outright (a constraint or SQL error);
+- loses rows, drops a table or column that held data, or empties values;
+- breaks SQLite's integrity or foreign-key checks;
+- leaves out a table or column that the new code uses; or
+- removes something the code serving traffic right now still uses. The script
+  looks up the live commit from Cloudflare Pages and reads its `db/schema.ts`;
+  if it can't, it assumes the live code uses everything. The fix is to ship
+  the code change first and the migration in a later deploy.
+
+Values that change without being lost (an `UPDATE` doing its job) are listed
+in the log but don't stop the deploy. If a migration is meant to lose data,
+name it in the file with `-- deploy: allow-loss orders.invoice_total` (or a
+bare table name); anything it doesn't name still stops the deploy.
+
+`bun run db:check` runs the rehearsal against production without applying
+anything, and `bun scripts/migrate.ts --local --check` runs it against your
+local dev database. D1 Time Travel keeps 30 days of history, and the deploy log
+records the bookmark from just before migrating.
 
 ## Key patterns
 
