@@ -735,7 +735,7 @@
               </tr>
               {#if recon.discount}
                 <tr class="breakdown-row">
-                  <td>Kept by the Ltd for admin</td>
+                  <td>{invoiceMatches ? 'Kept by the Ltd for admin' : 'Expected admin share'}</td>
                   <td class="amount">{formatSigned(keptByLtd)}</td>
                 </tr>
               {:else if invoiceMatches && keptByLtd !== 0}
@@ -764,9 +764,11 @@
                 Infinity gave the co-op {recon.discount.discountPercentage}% off. Everyone gets
                 {formatPercent(recon.discount.memberDiscountPercentage)} off each of their lines ({formatPrice(
                   memberSaving,
-                )} across the order), and the Ltd keeps the rest ({invoiceTotal === null
-                  ? 'about '
-                  : ''}{formatPrice(keptByLtd)}) for admin. Prices include VAT.
+                )} across the order), and {invoiceTotal !== null && !invoiceMatches
+                  ? `the rest is the Ltd's expected admin share (${formatPrice(keptByLtd)})`
+                  : `the Ltd keeps the rest (${invoiceTotal === null ? 'about ' : ''}${formatPrice(
+                      keptByLtd,
+                    )}) for admin`}. Prices include VAT.
               </small>
             {/if}
             {#if invoiceTotal !== null && !invoiceMatches}
