@@ -2,7 +2,7 @@
   import { untrack } from 'svelte';
   import type { LayoutData } from '../$types';
   import { useAuth } from '$lib/auth.svelte';
-  import { formatClaimAmount, formatClaimDelta, formatPrice } from '$lib/format';
+  import { formatCaseSize, formatClaimAmount, formatClaimDelta, formatPrice } from '$lib/format';
   import { updateOrder } from '$lib/orders';
   import ConfirmButton from '$lib/components/ConfirmButton.svelte';
   import {
@@ -231,7 +231,14 @@
                   {@const isPending = allocationId !== null && pending.has(allocationId)}
                   {@const ci = findCatalogueItem(alloc.orderItemId)}
                   <tr>
-                    <td>{alloc.description}</td>
+                    <td>
+                      {alloc.description}
+                      {#if ci}
+                        <br /><small class="case-size">
+                          Case: {formatCaseSize(ci.unitsPerCase, ci.packSize, ci.unit)}
+                        </small>
+                      {/if}
+                    </td>
                     <td>
                       {ci
                         ? formatClaimAmount(alloc.allocated, ci.unitsPerCase, ci.packSize, ci.unit)
@@ -334,6 +341,10 @@
   .picking-table .check-col input[type='checkbox'] {
     margin: 0;
     transform: scale(1.3);
+  }
+
+  .picking-table .case-size {
+    color: var(--pico-muted-color);
   }
 
   .badge-split {
